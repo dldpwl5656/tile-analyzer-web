@@ -6,20 +6,31 @@ from datetime import datetime
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
+# 1. 페이지 기본 레이아웃 및 테마 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# 커스텀 CSS: 모바일 터치 이벤트 최적화 및 캔버스 스크롤 차단 (CSS touch-action 처리)
+st.markdown("""
+    <style>
+        .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+        .stButton>button { width: 100%; margin-top: 5px; }
+        /* 모바일 터치 클릭 지원용 CSS */
+        canvas { touch-action: none !important; }
+    </style>
+""", unsafe_allow_html=True)
+
 if "history" not in st.session_state:
     st.session_state.history = []
 
 st.title("🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
-st.markdown("---")
 
+# 사이드바
 st.sidebar.header("📁 이미지 파일 선택")
-uploaded_file = st.sidebar.file_uploader("열화상 사진을 선택하세요", type=["jpg", "jpeg", "png", "bmp"])
+uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
 
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -30,13 +41,14 @@ if uploaded_file is not None:
     else:
         img_h, img_w = orig_img.shape[:2]
         
-        col_main, col_history = st.columns([7, 4])
+        # 메인 분석구역과 오른쪽 이력표 분할
+        col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.subheader("📌 [1단계] 왼쪽 원본 이미지에서 모서리 4곳을 클릭한 후 분석 버튼을 누르세요")
-            st.info("순서: 1.좌상(TL) ➔ 2.우상(TR) ➔ 3.우하(BR) ➔ 4.좌하(BL)")
+            st.caption("📌 **모서리 4곳 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
             
-            canvas_w = 380
+            # 모바일 화면에 잘 맞도록 폭을 260px로 설정
+            canvas_w = 260
             canvas_h = int(img_h * (canvas_w / img_w))
             
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
@@ -45,21 +57,21 @@ if uploaded_file is not None:
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**1. 원본 이미지 (모서리 4곳 클릭)**")
+                st.markdown("**1. 원본 (터치하여 선택)**")
                 canvas_result = st_canvas(
                     fill_color="rgba(239, 68, 68, 0.8)",
-                    stroke_width=3,
+                    stroke_width=2,
                     stroke_color="#ef4444",
                     background_image=pil_image,
                     update_streamlit=True,
                     height=canvas_h,
                     width=canvas_w,
                     drawing_mode="point",
-                    point_display_radius=6,
-                    key="canvas_tile",
+                    point_display_radius=8,  # 모바일 손가락 터치를 고려해 포인트 크기 확대
+                    key="canvas_mobile_opt",
                 )
 
-            # 클릭 좌표 수집
+            # 클릭/터치 좌표 수집
             clicked_pts = []
             if canvas_result.json_data is not None and "objects" in canvas_result.json_data:
                 for obj in canvas_result.json_data["objects"]:
@@ -69,13 +81,12 @@ if uploaded_file is not None:
                     orig_y = int(obj["top"] * y_scale)
                     clicked_pts.append([orig_x, orig_y])
 
-            st.caption(f"📍 현재 선택된 모서리 좌표 수: **{len(clicked_pts)} / 4 개**")
-
-            # 4개 선택 완료 시 버튼 활성화
-            run_btn = st.button("🚀 충진율 정밀 분석 실행", disabled=(len(clicked_pts) != 4))
-            
-            if len(clicked_pts) != 4:
-                st.warning("⚠️ 모서리 4곳을 정확히 클릭해야 분석 버튼이 활성화됩니다. (4개 초과 시 페이지를 새로고침 해주세요)")
+            # 좌표 선택 현황 및 버튼
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                st.write(f"📍 좌표 선택: **{len(clicked_pts)} / 4**")
+            with col_btn2:
+                run_btn = st.button("🚀 정밀 분석 실행", disabled=(len(clicked_pts) != 4))
 
             # 분석 실행
             if run_btn and len(clicked_pts) == 4:
@@ -123,69 +134,55 @@ if uploaded_file is not None:
                 display_mask[mask_full == 255] = [0, 0, 255]
                 
                 with col2:
-                    st.markdown("**2. 투시 보정 정면 타일**")
+                    st.markdown("**2. 투시 보정 정면**")
                     st.image(cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB), use_container_width=True)
                 
                 with col3:
-                    st.markdown("**3. 충진 진단 분석 마스크**")
+                    st.markdown("**3. 충진 진단 마스크**")
                     st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-                st.markdown("---")
-                
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[LH 시방 기준 만족 (합격)]** 최종 산출 충진율: **{final_ratio:.2f}%**")
-                    st.caption("• LH 표준 시방 요구조건(충진율 80% 이상)을 충족합니다. 별도의 보강 조치가 필요하지 않습니다.")
+                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[LH 시방 기준 미달 (불합격)]** 최종 산출 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
-                    ### ⚠️ LH 미달시 단계별 현장 조치 지침
-                    1. **공사 중 (시공 진행 단계):**
-                       - 미충진 부위 타일 **즉시 철거 후 전면 재시공** 실시
-                       - 바탕면 이물질 제거 및 **개량압착공법(타일 뒷면+바탕면 양면 도포)** 적용
-                       - 접착제 오픈타임 준수 및 압착 망치질 철저 지도
-                    2. **공사 완료 후 (완공/검수 단계):**
-                       - 줄눈 타공 후 **에폭시/주입용 에폭시 수지 고압 주입 보강공법** 적용
-                       - 경화 후 **타진 검사(소음 측량) 및 열화상 재촬영**을 통해 80% 이상 재검증
+                    **[현장 조치 지침]**
+                    * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
+                    * **공사 완료 후:** 줄눈 타공 후 에폭시 수지 고압 주입 보강
                     """)
 
                 now = datetime.now()
                 new_record = {
                     "사진 이름": uploaded_file.name,
-                    "날짜": now.strftime("%Y-%m-%d"),
                     "시간": now.strftime("%H:%M:%S"),
-                    "충진율(%)": f"{final_ratio:.2f}%"
+                    "충진율": f"{final_ratio:.2f}%"
                 }
                 
                 if not st.session_state.history or st.session_state.history[0]["사진 이름"] != uploaded_file.name:
                     st.session_state.history.insert(0, new_record)
 
             else:
-                if len(clicked_pts) != 4:
-                    with col2:
-                        st.markdown("**2. 투시 보정 정면 타일**")
-                        st.info("모서리 4곳 지정 후 분석 버튼을 누르세요.")
-                    with col3:
-                        st.markdown("**3. 충진 진단 분석 마스크**")
-                        st.info("분석 완료 시 표시됩니다.")
+                with col2:
+                    st.markdown("**2. 투시 보정 정면**")
+                    st.info("4곳 터치 후 버튼 클릭")
+                with col3:
+                    st.markdown("**3. 충진 진단 마스크**")
+                    st.info("분석 대기 중")
 
+        # 우측 분석 이력
         with col_history:
-            st.subheader("📋 누적 분석 이력 목록")
+            st.subheader("📋 분석 이력")
             if st.session_state.history:
                 df = pd.DataFrame(st.session_state.history)
                 st.dataframe(df, use_container_width=True)
                 
                 csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label="💾 CSV 내보내기",
-                    data=csv_data,
-                    file_name="tile_analysis_history.csv",
-                    mime="text/csv"
-                )
+                st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv")
                 if st.button("🧹 이력 초기화"):
                     st.session_state.history = []
                     st.rerun()
             else:
-                st.write("아직 기록된 분석 이력이 없습니다.")
+                st.caption("기록 없음")
 
 else:
-    st.info("👈 왼쪽 사이드바에서 열화상 분석 사진을 업로드해 주세요.")
+    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
