@@ -4,31 +4,29 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from PIL import Image
-from streamlit_drawable_canvas import st_canvas
+from streamlit_image_coordinates import streamlit_image_coordinates
 
-# 1. 페이지 기본 레이아웃 및 테마 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 커스텀 CSS: 모바일 터치 이벤트 최적화 및 캔버스 스크롤 차단 (CSS touch-action 처리)
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem; padding-bottom: 0rem; }
         .stButton>button { width: 100%; margin-top: 5px; }
-        /* 모바일 터치 클릭 지원용 CSS */
-        canvas { touch-action: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
+# 세션 상태 초기화
 if "history" not in st.session_state:
     st.session_state.history = []
+if "pts" not in st.session_state:
+    st.session_state.pts = []
 
 st.title("🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
 
-# 사이드바
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
 
@@ -41,55 +39,60 @@ if uploaded_file is not None:
     else:
         img_h, img_w = orig_img.shape[:2]
         
-        # 메인 분석구역과 오른쪽 이력표 분할
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.caption("📌 **모서리 4곳 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
+            st.caption("📌 **모서리 4곳 손가락 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
             
-            # 모바일 화면에 잘 맞도록 폭을 260px로 설정
-            canvas_w = 260
+            # 모바일용 컴팩트 사이즈
+            canvas_w = 280
             canvas_h = int(img_h * (canvas_w / img_w))
             
+            # 원본 이미지 표기를 위해 PIL 변환
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
-            pil_image = Image.fromarray(bg_img_rgb)
+            pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
+            # 점 찍힌 이미지를 보여주기 위한 처리
+            draw_img = np.array(pil_image).copy()
+            for i, p in enumerate(st.session_state.pts):
+                cv2.circle(draw_img, (p[0], p[1]), 6, (255, 0, 0), -1)
+                cv2.putText(draw_img, str(i+1), (p[0]+8, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**1. 원본 (터치하여 선택)**")
-                canvas_result = st_canvas(
-                    fill_color="rgba(239, 68, 68, 0.8)",
-                    stroke_width=2,
-                    stroke_color="#ef4444",
-                    background_image=pil_image,
-                    update_streamlit=True,
-                    height=canvas_h,
-                    width=canvas_w,
-                    drawing_mode="point",
-                    point_display_radius=8,  # 모바일 손가락 터치를 고려해 포인트 크기 확대
-                    key="canvas_mobile_opt",
+                st.markdown("**1. 원본 (터치로 좌표 지정)**")
+                # 터치 좌표를 감지하는 컴포넌트
+                value = streamlit_image_coordinates(
+                    Image.fromarray(draw_img),
+                    key="mobile_coordinates"
                 )
 
-            # 클릭/터치 좌표 수집
-            clicked_pts = []
-            if canvas_result.json_data is not None and "objects" in canvas_result.json_data:
-                for obj in canvas_result.json_data["objects"]:
-                    x_scale = img_w / canvas_w
-                    y_scale = img_h / canvas_h
-                    orig_x = int(obj["left"] * x_scale)
-                    orig_y = int(obj["top"] * y_scale)
-                    clicked_pts.append([orig_x, orig_y])
+                if value is not None:
+                    point = [value["x"], value["y"]]
+                    if len(st.session_state.pts) < 4 and point not in st.session_state.pts:
+                        st.session_state.pts.append(point)
+                        st.rerun()
 
-            # 좌표 선택 현황 및 버튼
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                st.write(f"📍 좌표 선택: **{len(clicked_pts)} / 4**")
+                st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
+                if st.button("🔄 좌표 리셋"):
+                    st.session_state.pts = []
+                    st.rerun()
+                    
             with col_btn2:
-                run_btn = st.button("🚀 정밀 분석 실행", disabled=(len(clicked_pts) != 4))
+                run_btn = st.button("🚀 정밀 분석 실행", disabled=(len(st.session_state.pts) != 4))
 
             # 분석 실행
-            if run_btn and len(clicked_pts) == 4:
+            if run_btn and len(st.session_state.pts) == 4:
+                # 좌표 스케일링 계산
+                clicked_pts = []
+                x_scale = img_w / canvas_w
+                y_scale = img_h / canvas_h
+                for pt in st.session_state.pts:
+                    clicked_pts.append([int(pt[0] * x_scale), int(pt[1] * y_scale)])
+
                 src_pts = np.float32(clicked_pts)
                 TARGET_W, TARGET_H = 600, 300
                 dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
@@ -164,12 +167,11 @@ if uploaded_file is not None:
             else:
                 with col2:
                     st.markdown("**2. 투시 보정 정면**")
-                    st.info("4곳 터치 후 버튼 클릭")
+                    st.info("4곳 터치 후 분석 버튼 클릭")
                 with col3:
                     st.markdown("**3. 충진 진단 마스크**")
                     st.info("분석 대기 중")
 
-        # 우측 분석 이력
         with col_history:
             st.subheader("📋 분석 이력")
             if st.session_state.history:
@@ -180,9 +182,11 @@ if uploaded_file is not None:
                 st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv")
                 if st.button("🧹 이력 초기화"):
                     st.session_state.history = []
+                    st.session_state.pts = []
                     st.rerun()
             else:
                 st.caption("기록 없음")
 
 else:
+    st.session_state.pts = []
     st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
