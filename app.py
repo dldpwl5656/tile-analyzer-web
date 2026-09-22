@@ -7,7 +7,7 @@ from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 st.set_page_config(
-    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
+    page_title="열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -25,7 +25,7 @@ if "history" not in st.session_state:
 if "pts" not in st.session_state:
     st.session_state.pts = []
 
-st.title("🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
+st.title("🔥 80% 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
 
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -145,9 +145,9 @@ if uploaded_file is not None:
                     st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
 
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.success(f"🎉 **[80% 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[80% 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
                     **[현장 조치 지침]**
                     * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
