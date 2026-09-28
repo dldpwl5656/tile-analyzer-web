@@ -7,7 +7,7 @@ from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 st.set_page_config(
-    page_title="열화상 타일 정밀 충진율 분석 시스템",
+    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -25,7 +25,7 @@ if "history" not in st.session_state:
 if "pts" not in st.session_state:
     st.session_state.pts = []
 
-st.title("🔥 80% 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
+st.title("🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
 
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -62,7 +62,7 @@ if uploaded_file is not None:
             
             with col1:
                 st.markdown("**1. 원본 (터치로 좌표 지정)**")
-                # 터치 좌표를 감지하는 컴포넌트
+                # 터치 좌표 감지 컴포넌트
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
                     key="mobile_coordinates"
@@ -103,38 +103,46 @@ if uploaded_file is not None:
                 blurred = cv2.GaussianBlur(warped_img, (5, 5), 0)
                 hsv_warped = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
                 
-                lower_red1 = np.array([0, 50, 50])
-                upper_red1 = np.array([10, 255, 255])
-                lower_red2 = np.array([145, 50, 50])
-                upper_red2 = np.array([180, 255, 255])
-                mask_red = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
+                # 1. 완전 충진: 연두색(Green/Lime) 영역 검출
+                lower_green = np.array([35, 50, 50])
+                upper_green = np.array([85, 255, 255])
+                mask_green = cv2.inRange(hsv_warped, lower_green, upper_green)
                 
+                # 2. 완전 충진: 흰색(White) 영역 검출
                 lower_white = np.array([0, 0, 200])
                 upper_white = np.array([180, 80, 255])
                 mask_white = cv2.inRange(hsv_warped, lower_white, upper_white)
                 
-                mask_full = cv2.bitwise_or(mask_red, mask_white)
+                # 완전 충진 마스크 (연두색 + 흰색)
+                mask_full = cv2.bitwise_or(mask_green, mask_white)
                 
-                lower_yellow = np.array([11, 50, 100])
-                upper_yellow = np.array([35, 255, 255])
-                mask_partial = cv2.inRange(hsv_warped, lower_yellow, upper_yellow)
+                # 3. 경계/부분 충진: 빨간색(Red) 영역 검출
+                lower_red1 = np.array([0, 50, 50])
+                upper_red1 = np.array([10, 255, 255])
+                lower_red2 = np.array([145, 50, 50])
+                upper_red2 = np.array([180, 255, 255])
+                mask_partial = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
                 
+                # 노이즈 제거 (모폴로지 연산)
                 kernel = np.ones((5, 5), np.uint8)
                 mask_full = cv2.morphologyEx(mask_full, cv2.MORPH_CLOSE, kernel)
                 mask_partial = cv2.morphologyEx(mask_partial, cv2.MORPH_CLOSE, kernel)
                 
+                # 면적 및 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 full_pixels = np.sum(mask_full == 255)
                 partial_pixels = np.sum(mask_partial == 255)
                 
+                # 가중치 적용 (완전충진=1.0, 경계부분=0.45)
                 WEIGHT_FULL = 1.0
                 WEIGHT_PARTIAL = 0.45
                 weighted_filled_pixels = (full_pixels * WEIGHT_FULL) + (partial_pixels * WEIGHT_PARTIAL)
                 final_ratio = (weighted_filled_pixels / total_pixels) * 100
                 
+                # 진단 마스크 시각화 (연두색=완전충진, 빨간색=경계/부분충진)
                 display_mask = np.ones_like(warped_img) * 255
-                display_mask[mask_partial == 255] = [0, 255, 255]
-                display_mask[mask_full == 255] = [0, 0, 255]
+                display_mask[mask_partial == 255] = [0, 0, 255]     # BGR: 빨간색 (경계/부분)
+                display_mask[mask_full == 255] = [0, 255, 0]        # BGR: 초록/연두색 (완전충진)
                 
                 with col2:
                     st.markdown("**2. 투시 보정 정면**")
@@ -145,9 +153,9 @@ if uploaded_file is not None:
                     st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
 
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[80% 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[80% 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
                     **[현장 조치 지침]**
                     * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
