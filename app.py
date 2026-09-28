@@ -44,15 +44,15 @@ if uploaded_file is not None:
         with col_main:
             st.caption("📌 **모서리 4곳 손가락 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
             
-            # 모바일용 컴팩트 사이즈
+            # 모바일용 컴팩트 크기
             canvas_w = 280
             canvas_h = int(img_h * (canvas_w / img_w))
             
-            # 원본 이미지 표기를 위해 PIL 변환
+            # 원본 이미지 표기를 위한 PIL 변환
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
-            # 점 찍힌 이미지를 보여주기 위한 처리
+            # 선택한 좌표 표시
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
                 cv2.circle(draw_img, (p[0], p[1]), 6, (255, 0, 0), -1)
@@ -62,7 +62,6 @@ if uploaded_file is not None:
             
             with col1:
                 st.markdown("**1. 원본 (터치로 좌표 지정)**")
-                # 터치 좌표 감지 컴포넌트
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
                     key="mobile_coordinates"
@@ -103,25 +102,40 @@ if uploaded_file is not None:
                 blurred = cv2.GaussianBlur(warped_img, (5, 5), 0)
                 hsv_warped = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
                 
-                # 1. 완전 충진: 연두색(Green/Lime) 영역 검출
-                lower_green = np.array([35, 50, 50])
+                # --- [1. 완전 충진 영역 검출] ---
+                # A. 연두색/초록색 영역
+                lower_green = np.array([35, 40, 40])
                 upper_green = np.array([85, 255, 255])
                 mask_green = cv2.inRange(hsv_warped, lower_green, upper_green)
                 
-                # 2. 완전 충진: 흰색(White) 영역 검출
+                # B. 노란색 영역
+                lower_yellow = np.array([15, 40, 100])
+                upper_yellow = np.array([34, 255, 255])
+                mask_yellow = cv2.inRange(hsv_warped, lower_yellow, upper_yellow)
+                
+                # C. 흰색 영역
                 lower_white = np.array([0, 0, 200])
                 upper_white = np.array([180, 80, 255])
                 mask_white = cv2.inRange(hsv_warped, lower_white, upper_white)
                 
-                # 완전 충진 마스크 (연두색 + 흰색)
-                mask_full = cv2.bitwise_or(mask_green, mask_white)
+                # 완전 충진 마스크 결합 (연두 + 노랑 + 흰색)
+                mask_full = mask_green | mask_yellow | mask_white
                 
-                # 3. 경계/부분 충진: 빨간색(Red) 영역 검출
+                # --- [2. 경계/부분 충진 영역 검출] ---
+                # A. 주황색 영역
+                lower_orange = np.array([10, 50, 50])
+                upper_orange = np.array([14, 255, 255])
+                mask_orange = cv2.inRange(hsv_warped, lower_orange, upper_orange)
+                
+                # B. 빨간색 영역
                 lower_red1 = np.array([0, 50, 50])
-                upper_red1 = np.array([10, 255, 255])
+                upper_red1 = np.array([9, 255, 255])
                 lower_red2 = np.array([145, 50, 50])
                 upper_red2 = np.array([180, 255, 255])
-                mask_partial = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
+                mask_red = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
+                
+                # 경계/부분 충진 마스크 결합 (빨강 + 주황)
+                mask_partial = mask_red | mask_orange
                 
                 # 노이즈 제거 (모폴로지 연산)
                 kernel = np.ones((5, 5), np.uint8)
@@ -133,13 +147,13 @@ if uploaded_file is not None:
                 full_pixels = np.sum(mask_full == 255)
                 partial_pixels = np.sum(mask_partial == 255)
                 
-                # 가중치 적용 (완전충진=1.0, 경계부분=0.45)
+                # 가중치 적용 (완전충진 = 1.0, 경계부분 = 0.45)
                 WEIGHT_FULL = 1.0
                 WEIGHT_PARTIAL = 0.45
                 weighted_filled_pixels = (full_pixels * WEIGHT_FULL) + (partial_pixels * WEIGHT_PARTIAL)
                 final_ratio = (weighted_filled_pixels / total_pixels) * 100
                 
-                # 진단 마스크 시각화 (연두색=완전충진, 빨간색=경계/부분충진)
+                # 시각화 마스크 (초록색 = 완전충진, 주황/빨간색 = 경계부분)
                 display_mask = np.ones_like(warped_img) * 255
                 display_mask[mask_partial == 255] = [0, 0, 255]     # BGR: 빨간색 (경계/부분)
                 display_mask[mask_full == 255] = [0, 255, 0]        # BGR: 초록/연두색 (완전충진)
