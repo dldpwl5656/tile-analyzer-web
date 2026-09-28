@@ -7,7 +7,7 @@ from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 st.set_page_config(
-    page_title="열화상 타일 정밀 충진율 분석 시스템",
+    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -19,13 +19,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 세션 상태 초기화
+# 세션 상태 및 키 카운터 초기화
 if "history" not in st.session_state:
     st.session_state.history = []
 if "pts" not in st.session_state:
     st.session_state.pts = []
+if "coord_key" not in st.session_state:
+    st.session_state.coord_key = 0
 
-st.title("🔥 열화상 타일 정밀 충진율 분석 시스템 v1.0")
+st.title("🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
 
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -44,15 +46,13 @@ if uploaded_file is not None:
         with col_main:
             st.caption("📌 **모서리 4곳 손가락 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
             
-            # 모바일용 컴팩트 크기
             canvas_w = 280
             canvas_h = int(img_h * (canvas_w / img_w))
             
-            # 원본 이미지 표기를 위한 PIL 변환
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
-            # 선택한 좌표 표시
+            # 찍은 좌표 점 및 순서 숫자 그리기
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
                 cv2.circle(draw_img, (p[0], p[1]), 6, (255, 0, 0), -1)
@@ -62,9 +62,10 @@ if uploaded_file is not None:
             
             with col1:
                 st.markdown("**1. 원본 (터치로 좌표 지정)**")
+                # 동적 key 적용으로 컴포넌트 리셋 제어
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
-                    key="mobile_coordinates"
+                    key=f"mobile_coord_{st.session_state.coord_key}"
                 )
 
                 if value is not None:
@@ -78,6 +79,7 @@ if uploaded_file is not None:
                 st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
                 if st.button("🔄 좌표 리셋"):
                     st.session_state.pts = []
+                    st.session_state.coord_key += 1  # key 값을 변경하여 좌표 컴포넌트 완전 재초기화
                     st.rerun()
                     
             with col_btn2:
@@ -85,7 +87,6 @@ if uploaded_file is not None:
 
             # 분석 실행
             if run_btn and len(st.session_state.pts) == 4:
-                # 좌표 스케일링 계산
                 clicked_pts = []
                 x_scale = img_w / canvas_w
                 y_scale = img_h / canvas_h
@@ -118,7 +119,6 @@ if uploaded_file is not None:
                 upper_white = np.array([180, 80, 255])
                 mask_white = cv2.inRange(hsv_warped, lower_white, upper_white)
                 
-                # 완전 충진 마스크 결합 (연두 + 노랑 + 흰색)
                 mask_full = mask_green | mask_yellow | mask_white
                 
                 # --- [2. 경계/부분 충진 영역 검출] ---
@@ -134,26 +134,21 @@ if uploaded_file is not None:
                 upper_red2 = np.array([180, 255, 255])
                 mask_red = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
                 
-                # 경계/부분 충진 마스크 결합 (빨강 + 주황)
                 mask_partial = mask_red | mask_orange
                 
-                # 노이즈 제거 (모폴로지 연산)
                 kernel = np.ones((5, 5), np.uint8)
                 mask_full = cv2.morphologyEx(mask_full, cv2.MORPH_CLOSE, kernel)
                 mask_partial = cv2.morphologyEx(mask_partial, cv2.MORPH_CLOSE, kernel)
                 
-                # 면적 및 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 full_pixels = np.sum(mask_full == 255)
                 partial_pixels = np.sum(mask_partial == 255)
                 
-                # 가중치 적용 (완전충진 = 1.0, 경계부분 = 0.45)
                 WEIGHT_FULL = 1.0
                 WEIGHT_PARTIAL = 0.45
                 weighted_filled_pixels = (full_pixels * WEIGHT_FULL) + (partial_pixels * WEIGHT_PARTIAL)
                 final_ratio = (weighted_filled_pixels / total_pixels) * 100
                 
-                # 시각화 마스크 (초록색 = 완전충진, 주황/빨간색 = 경계부분)
                 display_mask = np.ones_like(warped_img) * 255
                 display_mask[mask_partial == 255] = [0, 0, 255]     # BGR: 빨간색 (경계/부분)
                 display_mask[mask_full == 255] = [0, 255, 0]        # BGR: 초록/연두색 (완전충진)
@@ -167,13 +162,13 @@ if uploaded_file is not None:
                     st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
 
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
                     **[현장 조치 지침]**
-                    * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
-                    * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                    * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
+                    * **공사 완료 후:** 줄눈 타공 후 에폭시 수지 고압 주입 보강
                     """)
 
                 now = datetime.now()
@@ -205,6 +200,7 @@ if uploaded_file is not None:
                 if st.button("🧹 이력 초기화"):
                     st.session_state.history = []
                     st.session_state.pts = []
+                    st.session_state.coord_key += 1
                     st.rerun()
             else:
                 st.caption("기록 없음")
