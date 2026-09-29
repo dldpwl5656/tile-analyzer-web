@@ -6,19 +6,15 @@ from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-# 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 커스텀 CSS 스타일링
 st.markdown("""
     <style>
-        html, body, [class*="css"] {
-            font-size: 1.2rem !important;
-        }
+        html, body, [class*="css"] { font-size: 1.2rem !important; }
         .stApp { background-color: #f8fafc; color: #0f172a; }
         .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
         .title-card {
@@ -53,10 +49,7 @@ st.markdown("""
             color: #1e293b !important;
             margin-bottom: 0.8rem !important;
         }
-        h3, .stSubheader {
-            font-size: 1.6rem !important;
-            font-weight: 800 !important;
-        }
+        h3, .stSubheader { font-size: 1.6rem !important; font-weight: 800 !important; }
         [data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
         [data-testid="column"] { background: #ffffff; padding: 1.2rem; border-radius: 12px; border: 1px solid #cbd5e1; }
     </style>
@@ -87,8 +80,6 @@ if uploaded_file is not None:
         st.error("❌ 이미지를 불러올 수 없습니다.")
     else:
         full_h, full_w = full_img.shape[:2]
-        
-        # 통이미지 대응 (상단 영역 분리)
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -156,29 +147,21 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [열화상 충진 부위(고온: 노랑/주황/빨강) 정밀 마스킹]
+                # 📌 [핵심 개선: 배경(초록/연두) 완벽 제거 및 R-B 차분 마스킹]
                 # =========================================================
-                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                b, g, r = cv2.split(warped_img.astype(np.float32))
                 
-                # 1. 노란색 ~ 주황색 ~ 연한 빨강 (Hue: 0~35)
-                lower_warm1 = np.array([0, 50, 100])
-                upper_warm1 = np.array([35, 255, 255])
+                # 1. 붉은 성분이 파란/초록 성분보다 확연히 높은 영역(열 발생 부위) 추출
+                red_intensity = r - np.maximum(b, g)
+                red_intensity = np.clip(red_intensity, 0, 255).astype(np.uint8)
                 
-                # 2. 진한 빨강 (Hue: 160~180)
-                lower_warm2 = np.array([160, 50, 100])
-                upper_warm2 = np.array([180, 255, 255])
+                # 2. 고온 영역만 이진화 (60 이상만 충진 영역으로 인정)
+                _, mask_filled = cv2.threshold(red_intensity, 40, 255, cv2.THRESH_BINARY)
                 
-                mask1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
-                mask2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
-                
-                # 충진 영역(흰색 = 255) 마스크 생성
-                mask_filled = cv2.bitwise_or(mask1, mask2)
-                
-                # 미세 노이즈 제거 (Opening)
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                # 3. 노이즈 제거
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
-                # 충진율 계산 (흰색 영역 = 충진 영역)
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.count_nonzero(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100.0
