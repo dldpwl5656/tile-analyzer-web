@@ -6,12 +6,14 @@ from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
+# 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# 커스텀 CSS 스타일링
 st.markdown("""
     <style>
         html, body, [class*="css"] { font-size: 1.2rem !important; }
@@ -147,19 +149,35 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [핵심 개선: 배경(초록/연두) 완벽 제거 및 R-B 차분 마스킹]
+                # 📌 [고온 영역(노랑/주황/빨강) 정밀 고정 추출 알고리즘]
                 # =========================================================
-                b, g, r = cv2.split(warped_img.astype(np.float32))
+                # 1. LAB 색상 공간으로 변환 (A 채널: 초록↔빨강, L 채널: 밝기)
+                lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
+                l_chan, a_chan, b_chan = cv2.split(lab)
                 
-                # 1. 붉은 성분이 파란/초록 성분보다 확연히 높은 영역(열 발생 부위) 추출
-                red_intensity = r - np.maximum(b, g)
-                red_intensity = np.clip(red_intensity, 0, 255).astype(np.uint8)
+                # 2. HSV 색상 공간에서 붉은색/주황색/노란색 영역 마스킹
+                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 2. 고온 영역만 이진화 (60 이상만 충진 영역으로 인정)
-                _, mask_filled = cv2.threshold(red_intensity, 40, 255, cv2.THRESH_BINARY)
+                # 주황/노랑/빨강 (Hue: 0 ~ 30, Saturation > 70, Value > 120)
+                lower_warm1 = np.array([0, 70, 120])
+                upper_warm1 = np.array([30, 255, 255])
                 
-                # 3. 노이즈 제거
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                # 진한 빨강 (Hue: 160 ~ 180, Saturation > 70, Value > 120)
+                lower_warm2 = np.array([160, 70, 120])
+                upper_warm2 = np.array([180, 255, 255])
+                
+                mask_hsv1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
+                mask_hsv2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
+                mask_hsv = cv2.bitwise_or(mask_hsv1, mask_hsv2)
+                
+                # 3. LAB A-채널(붉은색 성분 강도 > 135) 조건과 결합하여 배경(초록) 완벽 제외
+                _, mask_lab_a = cv2.threshold(a_chan, 135, 255, cv2.THRESH_BINARY)
+                
+                # 충진 영역(고온 부위) = HSV 고온 마스크 AND LAB 붉은색 마스크
+                mask_filled = cv2.bitwise_and(mask_hsv, mask_lab_a)
+                
+                # 4. 노이즈 제거 (Morphology Opening)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
                 total_pixels = TARGET_W * TARGET_H
