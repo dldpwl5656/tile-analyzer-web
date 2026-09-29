@@ -23,13 +23,7 @@ st.markdown("""
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             margin-bottom: 1.2rem;
         }
-        .title-card h1 {
-            color: #ffffff !important;
-            font-size: 1.5rem !important;
-            font-weight: 800 !important;
-            margin: 0 !important;
-            line-height: 1.3 !important;
-        }
+        .title-card h1 { color: #ffffff !important; font-size: 1.5rem !important; font-weight: 800 !important; margin: 0 !important; }
         .title-card p { color: #dbeafe !important; font-size: 0.85rem !important; margin-top: 0.3rem !important; }
         .sub-instruction {
             background-color: #ffffff;
@@ -72,8 +66,7 @@ if uploaded_file is not None:
     else:
         full_h, full_w = full_img.shape[:2]
         
-        # 📌 3개 합본 이미지인 경우 상단 1/3 (RGB 타일 영역)만 슬라이싱
-        # 만약 이미지가 통이미지 형태(세로가 길다)이면 상단 RGB 영역만 자동 추출
+        # 통이미지에서 맨 위 RGB 타일 영역만 정확히 Crop
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -84,7 +77,7 @@ if uploaded_file is not None:
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.markdown('<div class="sub-instruction">📌 <b>상단 RGB 타일 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
             
             canvas_w = 320
             canvas_h = int(img_h * (canvas_w / img_w))
@@ -140,30 +133,26 @@ if uploaded_file is not None:
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
-                # --- [58% 레퍼런스 동일 알고리즘] ---
-                # RGB에서 주황/빨강/노랑 충진 영역 추출 (HSV 및 채널 보정)
+                # =========================================================
+                # 📌 [레퍼런스 Blue Image 이진화 및 58% 일치 알고리즘]
+                # =========================================================
+                # HSV 채널 변환
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                h_channel = hsv[:, :, 0]
-                s_channel = hsv[:, :, 1]
-                v_channel = hsv[:, :, 2]
+                h_channel = hsv[:, :, 0] # Hue (색상)
+                s_channel = hsv[:, :, 1] # Saturation (채도)
                 
-                # 배경(연두/초록: Hue 35~85)을 제외하고 충진 영역만 검출
-                bg_mask = (h_channel >= 30) & (h_channel <= 85) & (s_channel > 30)
+                # 배경 조건: 노랑~초록~연두 배경 (Hue 20 ~ 85 범위)
+                bg_mask = (h_channel >= 20) & (h_channel <= 85) & (s_channel > 30)
                 
+                # 충진 마스크: 배경이 아닌 영역 = 흰색(255)
                 mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
                 mask_filled[~bg_mask] = 255
                 
-                # 테두리 노이즈 제거
-                mask_filled[:5, :] = 0
-                mask_filled[-5:, :] = 0
-                mask_filled[:, :5] = 0
-                mask_filled[:, -5:] = 0
-                
-                # 모포놀로지 정제
-                kernel = np.ones((3, 3), np.uint8)
+                # 모포놀로지 연산으로 세로 노이즈 정제
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
-                # 계산
+                # 충진율 계산 (흰색 영역 비율)
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.count_nonzero(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100.0
