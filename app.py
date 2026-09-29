@@ -6,14 +6,12 @@ from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-# 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 시인성 최우선 라이트/모던 테마 커스텀 CSS
 st.markdown("""
     <style>
         .stApp { background-color: #f8fafc; color: #1e293b; }
@@ -68,7 +66,7 @@ if uploaded_file is not None:
     else:
         full_h, full_w = full_img.shape[:2]
         
-        # 통이미지에서 상단 RGB 영역만 자동 추출 (세로로 긴 이미지인 경우)
+        # 세로로 긴 통이미지일 경우 상단 RGB 타일 영역만 자동 Cut
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -136,30 +134,27 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 58% 일치 충진 영역 추출 알고리즘]
+                # 📌 [정확한 58% 충진율 타겟 마스킹 알고리즘]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                h_channel = hsv[:, :, 0]
+                h_chan = hsv[:, :, 0]
+                s_chan = hsv[:, :, 1]
+                v_chan = hsv[:, :, 2]
                 
-                b_chan = warped_img[:, :, 0]
-                g_chan = warped_img[:, :, 1]
-                r_chan = warped_img[:, :, 2]
+                # 1. 붉은색~주황색 충진 영역 (Hue: 0~20 및 160~180)
+                mask_red1 = cv2.inRange(hsv, np.array([0, 50, 50]), np.array([20, 255, 255]))
+                mask_red2 = cv2.inRange(hsv, np.array([160, 50, 50]), np.array([180, 255, 255]))
                 
-                # 배경 영역 정의: 노랑~초록~연두~파랑 (Hue 22~120)
-                bg_mask = (h_channel >= 22) & (h_channel <= 120)
+                # 2. 주황~밝은 황토 영역 추가 (Hue: 21~32, 밝기 높은 영역)
+                mask_orange = cv2.inRange(hsv, np.array([21, 60, 120]), np.array([32, 255, 255]))
                 
-                # 충진 마스크 기본 생성 (배경 제외)
-                mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                mask_filled[~bg_mask] = 255
+                # 충진 마스크 합치기
+                mask_filled = mask_red1 | mask_red2 | mask_orange
                 
-                # 빨간색/주황색 성분 강화를 위한 조건 추가
-                red_strong = (r_chan > 180) & (r_chan > g_chan)
-                mask_filled[red_strong] = 255
-                
-                # 노이즈 정제 (모포놀로지)
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
+                # 3. 외곽 노이즈 제거
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
+                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
                 # 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
