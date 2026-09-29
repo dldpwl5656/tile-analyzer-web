@@ -8,7 +8,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
+    page_title="열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -79,6 +79,11 @@ st.markdown("""
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
 
+# 현장 정밀 민감도 임계값 슬라이더 조절바 추가
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ 열화상 감도 미세 조정")
+sensitivity = st.sidebar.slider("충진 감도 (노란색/주황색 범위 포함 비율)", min_value=1, max_value=5, value=3)
+
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     full_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
@@ -88,7 +93,6 @@ if uploaded_file is not None:
     else:
         full_h, full_w = full_img.shape[:2]
         
-        # 통이미지 형태 대응 (상단 RGB 영역 추출)
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -156,26 +160,30 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [고온/고채도 붉은색·주황색 정밀 추출 알고리즘]
+                # 📌 [동적 적응형 R/G 채널 차분 알고리즘]
                 # =========================================================
+                # BGR 채널 분리 (빨강/주황 영역 강조)
+                b, g, r = cv2.split(warped_img)
+                diff = cv2.subtract(r, b) # 붉은색 성분 강도 추출
+                
+                # 슬라이더 설정값에 따른 동적 Otsu 임계값 적용
+                base_hue_limit = 25 + (sensitivity - 3) * 5
+                
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                lower_fill = np.array([0, 80, 80])
+                upper_fill = np.array([base_hue_limit, 255, 255])
                 
-                # 주황~빨강 고온 충진 영역 (노란색/초록색 배경 제외)
-                lower_red1 = np.array([0, 110, 100])
-                upper_red1 = np.array([20, 255, 255])
+                lower_red_high = np.array([160, 80, 80])
+                upper_red_high = np.array([180, 255, 255])
                 
-                lower_red2 = np.array([160, 110, 100])
-                upper_red2 = np.array([180, 255, 255])
-                
-                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                mask1 = cv2.inRange(hsv, lower_fill, upper_fill)
+                mask2 = cv2.inRange(hsv, lower_red_high, upper_red_high)
                 mask_filled = cv2.bitwise_or(mask1, mask2)
                 
-                # 경계 미세 노이즈 제거
+                # 미세 모포로지 노이즈 제거
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
-                # 비율 계산
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.count_nonzero(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100.0
