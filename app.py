@@ -6,16 +6,72 @@ from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
+# 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="열화상 타일 정밀 충진율 분석 시스템",
+    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# 열화상 컨셉 커스텀 CSS (제목 잘림 방지 & 다크 네온 테마)
 st.markdown("""
     <style>
-        .block-container { padding-top: 1rem; padding-bottom: 0rem; }
-        .stButton>button { width: 100%; margin-top: 5px; }
+        /* 메인 배경 및 텍스트 기본 설정 */
+        .stApp {
+            background-color: #0e1117;
+            color: #e0e0e0;
+        }
+        
+        /* 상단 여백 최소화 */
+        .block-container { 
+            padding-top: 1.5rem; 
+            padding-bottom: 1rem; 
+        }
+        
+        /* 제목 텍스트 반응형 & 잘림 방지 */
+        .main-title {
+            font-size: clamp(1.1rem, 2.5vw, 1.8rem);
+            font-weight: 800;
+            color: #ffffff;
+            background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.2rem;
+        }
+
+        /* 서브 캡션 및 안내 문구 */
+        .sub-caption {
+            color: #a0aec0;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        /* 버튼 테마 커스텀 (네온 스타일) */
+        .stButton>button {
+            width: 100%;
+            border-radius: 8px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #38bdf8;
+            border: 1px solid #0284c7;
+            transition: all 0.3s ease;
+        }
+        .stButton>button:hover {
+            background: #0284c7;
+            color: #ffffff;
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        /* 사이드바 스타일링 */
+        [data-testid="stSidebar"] {
+            background-color: #161b22;
+            border-right: 1px solid #30363d;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -27,7 +83,8 @@ if "pts" not in st.session_state:
 if "coord_key" not in st.session_state:
     st.session_state.coord_key = 0
 
-st.title("🔥 기준 열화상 타일 정밀 충진율 분석 시스템 v1.0")
+# 메인 타이틀 출력 (CSS 클래스 적용)
+st.markdown('<div class="main-title">🔥 열화상 타일 정밀 충진율 분석 시스템</div>', unsafe_allow_html=True)
 
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -44,7 +101,7 @@ if uploaded_file is not None:
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.caption("📌 **모서리 4곳 손가락 터치:** 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하")
+            st.markdown('<div class="sub-caption">📌 <b>모서리 4곳 터치:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
             
             canvas_w = 280
             canvas_h = int(img_h * (canvas_w / img_w))
@@ -55,14 +112,13 @@ if uploaded_file is not None:
             # 찍은 좌표 점 및 순서 숫자 그리기
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
-                cv2.circle(draw_img, (p[0], p[1]), 6, (255, 0, 0), -1)
+                cv2.circle(draw_img, (p[0], p[1]), 6, (0, 242, 254), -1)
                 cv2.putText(draw_img, str(i+1), (p[0]+8, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**1. 원본 (터치로 좌표 지정)**")
-                # 동적 key 적용으로 컴포넌트 리셋 제어
+                st.markdown("**1. 원본 (터치 좌표 지정)**")
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
                     key=f"mobile_coord_{st.session_state.coord_key}"
@@ -79,7 +135,7 @@ if uploaded_file is not None:
                 st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
                 if st.button("🔄 좌표 리셋"):
                     st.session_state.pts = []
-                    st.session_state.coord_key += 1  # key 값을 변경하여 좌표 컴포넌트 완전 재초기화
+                    st.session_state.coord_key += 1
                     st.rerun()
                     
             with col_btn2:
