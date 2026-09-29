@@ -136,26 +136,21 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [HSV 정밀 색상 필터링 기반 충진율 검출 알고리즘]
+                # 📌 [범용 정밀 RGB 차분 기반 충진 이진화 파이프라인]
                 # =========================================================
-                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                r_chan = warped_img[:, :, 2].astype(np.float32)
+                g_chan = warped_img[:, :, 1].astype(np.float32)
+                b_chan = warped_img[:, :, 0].astype(np.float32)
                 
-                # 열화상의 주황~빨강 영역 범위 지정 (노란색/연두색 배경 제외)
-                # 범위 1: 빨간색~주황색 영역
-                lower_red1 = np.array([0, 100, 120])
-                upper_red1 = np.array([18, 255, 255])
+                # 열화상 충진 특성: Red 성분 강조 및 Green/Blue 대비
+                diff_score = r_chan - (g_chan * 0.75 + b_chan * 0.25)
                 
-                # 범위 2: 보라~진빨강 영역 (HSV 170~180)
-                lower_red2 = np.array([168, 100, 120])
-                upper_red2 = np.array([180, 255, 255])
+                # 범용 충진 영역 마스킹 (Red 임계값 및 차분 가중치 적용)
+                mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
+                mask_filled[(diff_score > 18) & (r_chan > 140)] = 255
                 
-                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-                
-                mask_filled = cv2.bitwise_or(mask1, mask2)
-                
-                # 노이즈 및 자잘한 잔상 제거 (모폴로지 연산)
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
+                # 노이즈 정제 (열화상 경계선 보정)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
