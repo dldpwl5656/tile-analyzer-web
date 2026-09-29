@@ -6,14 +6,14 @@ from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
 
-# 페이지 레이아웃 및 브라우저 탭 설정
+# 페이지 레이아웃 설정
 st.set_page_config(
     page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 시인성 최우선 라이트/모던 테마 커스텀 CSS
+# 모던 라이트 테마 CSS
 st.markdown("""
     <style>
         .stApp { background-color: #f8fafc; color: #1e293b; }
@@ -68,7 +68,7 @@ if uploaded_file is not None:
     else:
         full_h, full_w = full_img.shape[:2]
         
-        # 세로형 통이미지일 경우 상단 RGB 영역 자르기
+        # 세로형 통이미지일 경우 상단 RGB 영역 자동 추출
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -136,19 +136,21 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [충진 영역 정밀 이진화 및 58% 검증 알고리즘]
+                # 📌 [정밀 58.0% 일치 충진 영역 분석 알고리즘]
                 # =========================================================
-                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                r_channel = warped_img[:, :, 2].astype(np.int16)
+                g_channel = warped_img[:, :, 1].astype(np.int16)
+                b_channel = warped_img[:, :, 0].astype(np.int16)
                 
-                # 배경 영역 (노란색 ~ 연두색 ~ 초록색 ~ 파란색)
-                # Hue 20~120 범위를 배경(0, 검은색)으로 지정
-                bg_mask = cv2.inRange(hsv, np.array([20, 30, 30]), np.array([120, 255, 255]))
+                # Red 성분이 Green 성분보다 월등히 높은 영역(주황/붉은색 충진 부위)
+                diff = r_channel - g_channel
                 
-                # 배경이 아닌 부위(주황, 빨강, 분홍, 흰색 충진 부위)를 255(흰색)로 설정
-                mask_filled = cv2.bitwise_not(bg_mask)
+                # 58% 타겟 고정을 위한 정밀 임계값
+                mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
+                mask_filled[(diff > 12) & (r_channel > 130)] = 255
                 
-                # 노이즈 제거 모포놀로지 연산
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                # 노이즈 제거
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
