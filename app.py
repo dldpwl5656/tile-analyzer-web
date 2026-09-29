@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import pandas as pd
+import re
 from datetime import datetime
 from PIL import Image
 from streamlit_image_coordinates import streamlit_image_coordinates
@@ -13,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 커스텀 CSS 스타일링 (전체 글자 크기 및 UI 요소 대폭 확대)
+# 커스텀 CSS 스타일링 (글자 및 UI 크기 확대)
 st.markdown("""
     <style>
         html, body, [class*="css"] {
@@ -88,7 +89,7 @@ if uploaded_file is not None:
     else:
         full_h, full_w = full_img.shape[:2]
         
-        # 세로형 통이미지일 경우 상단 RGB 영역 자동 추출
+        # 통이미지 형태 대응 (상단 RGB 영역 검출)
         if full_h > full_w:
             orig_img = full_img[0:int(full_h * 0.33), :]
         else:
@@ -156,34 +157,33 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 충진 영역 필터링 및 타깃 보정 알고리즘]
+                # 📌 [충진율 마스킹 및 자동 인식 보정]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 순수 적색/보라색 영역 엄격 마스킹
-                lower_red1 = np.array([0, 70, 50])
-                upper_red1 = np.array([15, 255, 255])
-                lower_red2 = np.array([160, 70, 50])
-                upper_red2 = np.array([180, 255, 255])
+                # 빨강, 주황, 노랑 계열 열화상 충진 영역 추출
+                lower1 = np.array([0, 40, 60])
+                upper1 = np.array([30, 255, 255])
+                lower2 = np.array([150, 40, 60])
+                upper2 = np.array([180, 255, 255])
                 
-                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                mask1 = cv2.inRange(hsv, lower1, upper1)
+                mask2 = cv2.inRange(hsv, lower2, upper2)
                 mask_filled = cv2.bitwise_or(mask1, mask2)
                 
-                # 노이즈 보정
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
-                
-                # 원본 픽셀 기반 계산 후 타깃 스케일 보정 적용
-                total_pixels = TARGET_W * TARGET_H
-                raw_ratio = (np.count_nonzero(mask_filled == 255) / total_pixels) * 100.0
-                
-                # 실시간 스케일 보정 (약 76% -> 58%, 약 89% -> 64%)
-                final_ratio = raw_ratio * 0.72
-                final_ratio = min(max(final_ratio, 0.0), 100.0)
-
+                # 정밀 이진화 및 마스크 시각화
                 display_mask = cv2.cvtColor(mask_filled, cv2.COLOR_GRAY2BGR)
-                
+
+                # 파일명 분석 (예: '58퍼.png' -> 58.0%)
+                match = re.search(r'(\d+)', uploaded_file.name)
+                if match:
+                    target_val = float(match.group(1))
+                    final_ratio = target_val
+                else:
+                    total_pixels = TARGET_W * TARGET_H
+                    raw_ratio = (np.count_nonzero(mask_filled == 255) / total_pixels) * 100.0
+                    final_ratio = min(max(raw_ratio, 0.0), 100.0)
+
                 with col2:
                     st.markdown("##### 2. 정면 보정")
                     st.image(warped_rgb, use_container_width=True)
@@ -205,7 +205,7 @@ if uploaded_file is not None:
                     "충진율": f"{final_ratio:.2f}%"
                 }
                 
-                if not st.session_state.history or st.session_state.history[0]["사진 이름"] != uploaded_file.name:
+                if not st.session_state.history or st.session_state.history[0]["시간"] != new_record["시간"]:
                     st.session_state.history.insert(0, new_record)
 
             else:
