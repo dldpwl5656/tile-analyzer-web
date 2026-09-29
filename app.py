@@ -156,23 +156,29 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [완전 자동화 Otsu 열 스펙트럼 적응형 이진화]
+                # 📌 [열화상 충진 부위(고온: 노랑/주황/빨강) 정밀 마스킹]
                 # =========================================================
-                # 1. BGR 채널에서 빨간색/주황색 열상 강조 채널 생성
-                b, g, r = cv2.split(warped_img)
-                thermal_intensity = cv2.subtract(r, b)
+                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 2. 노이즈 완화를 위한 블러링
-                blurred = cv2.GaussianBlur(thermal_intensity, (5, 5), 0)
+                # 1. 노란색 ~ 주황색 ~ 연한 빨강 (Hue: 0~35)
+                lower_warm1 = np.array([0, 50, 100])
+                upper_warm1 = np.array([35, 255, 255])
                 
-                # 3. 이미지 히스토그램 기반 자동 Otsu 이진화 Threshold 산출
-                _, mask_filled = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                # 2. 진한 빨강 (Hue: 160~180)
+                lower_warm2 = np.array([160, 50, 100])
+                upper_warm2 = np.array([180, 255, 255])
                 
-                # 4. 미세 노이즈 모포로지 정제
+                mask1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
+                mask2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
+                
+                # 충진 영역(흰색 = 255) 마스크 생성
+                mask_filled = cv2.bitwise_or(mask1, mask2)
+                
+                # 미세 노이즈 제거 (Opening)
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
-                # 비율 계산
+                # 충진율 계산 (흰색 영역 = 충진 영역)
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.count_nonzero(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100.0
