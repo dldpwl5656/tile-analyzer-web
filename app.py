@@ -136,19 +136,24 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [LAB 색상 공간 a* 채널 + Otsu 자동 이진화 정밀 알고리즘]
+                # 📌 [정밀 HSV 붉은색~주황색 결합 필터링 알고리즘]
                 # =========================================================
-                # 1. LAB 색상 공간 변환 (a* 채널은 Red vs Green을 명확히 분리)
-                lab_img = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
-                a_channel = lab_img[:, :, 1]
+                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 2. 가우시안 블러로 미세 노이즈 제거
-                blurred = cv2.GaussianBlur(a_channel, (5, 5), 0)
+                # 1. 붉은색~주황색 영역 (Hue 0 ~ 22)
+                lower_red1 = np.array([0, 50, 50])
+                upper_red1 = np.array([22, 255, 255])
                 
-                # 3. Otsu 자동 임계값 처리로 빨강(충진) 영역 분리
-                _, mask_filled = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                # 2. 보라~진분홍 영역 (Hue 150 ~ 180)
+                lower_red2 = np.array([150, 50, 50])
+                upper_red2 = np.array([180, 255, 255])
                 
-                # 4. 모폴로지 연산으로 경계선 정밀 보정
+                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                
+                mask_filled = cv2.bitwise_or(mask1, mask2)
+                
+                # 경계 미세 노이즈 제거
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
