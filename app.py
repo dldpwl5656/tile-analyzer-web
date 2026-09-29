@@ -163,31 +163,38 @@ if uploaded_file is not None:
                 matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
                 
-                # --- [정밀 충진 부위 추출 알고리즘] ---
-                # 1. RGB 분리 후 Red/Orange (충진 영역) 강조 추출
-                warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
-                
-                # HSV 변환을 통해 빨강~주황 영역(충진부) 마스크 생성
+               # --- [정밀 충진 부위 추출 알고리즘] ---
+                # HSV 변환을 통해 붉은색~주황색~노란색 충진 영역 전체 마스킹
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                lower_red1 = np.array([0, 70, 50])
-                upper_red1 = np.array([18, 255, 255])
-                lower_red2 = np.array([160, 70, 50])
+                
+                # 1. 빨간색 영역 (Hue: 0~10 및 160~180)
+                lower_red1 = np.array([0, 50, 50])
+                upper_red1 = np.array([10, 255, 255])
+                lower_red2 = np.array([160, 50, 50])
                 upper_red2 = np.array([180, 255, 255])
+                mask_red = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
                 
-                mask_filled = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
+                # 2. 주황색~황토/노란색 충진 영역 (Hue: 11~32, Saturation/Value 범위 조절)
+                lower_orange_yellow = np.array([11, 70, 70])
+                upper_orange_yellow = np.array([32, 255, 255])
+                mask_orange = cv2.inRange(hsv, lower_orange_yellow, upper_orange_yellow)
                 
-                # 잡음 제거 (미세 노이즈 삭제)
+                # 전체 충진 영역 결합 (빨강 + 주황/노랑)
+                mask_filled = mask_red | mask_orange
+                
+                # 모포놀로지 연산으로 노이즈 정돈 (3x3 커널)
                 kernel = np.ones((3, 3), np.uint8)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
+                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
                 # 면적 및 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.sum(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100
 
-                # 진단 마스크 시각화 (충진 부위: 빨강/흰색, 배경: 검은색)
+                # 진단 마스크 시각화 (충진 부위: 흰색, 배경: 검은색)
                 display_mask = np.zeros_like(warped_img)
-                display_mask[mask_filled == 255] = [255, 255, 255] # BW 스타일 표현
+                display_mask[mask_filled == 255] = [255, 255, 255]
                 
                 with col2:
                     st.markdown("##### 2. 투시 보정 정면")
