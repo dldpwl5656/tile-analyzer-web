@@ -156,29 +156,42 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 열화상 HSV 색상 임계값 마스킹 알고리즘]
+                # 📌 [열화상 HSV 채널 정밀 분할 및 역전 방지 보정 알고리즘]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 충진 부위 (붉은색/주황색/노란색 고채도/고명도 영역) 정밀 필터링
-                lower_red1 = np.array([0, 100, 120])
-                upper_red1 = np.array([28, 255, 255])
+                # 1. 충진(고온) 영역: 빨강, 주황, 노랑 계열 (Hue: 0~45 및 140~180)
+                # 노란색/연두색 경계면 포함 정밀 임계값 설정
+                lower_fill1 = np.array([0, 50, 80])
+                upper_fill1 = np.array([42, 255, 255])
                 
-                lower_red2 = np.array([160, 100, 120])
-                upper_red2 = np.array([180, 255, 255])
+                lower_fill2 = np.array([140, 50, 80])
+                upper_fill2 = np.array([180, 255, 255])
                 
-                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-                mask_filled = cv2.bitwise_or(mask1, mask2)
+                mask_fill1 = cv2.inRange(hsv, lower_fill1, upper_fill1)
+                mask_fill2 = cv2.inRange(hsv, lower_fill2, upper_fill2)
+                mask_filled = cv2.bitwise_or(mask_fill1, mask_fill2)
                 
-                # 경계 미세 노이즈 제거
+                # 2. 비충진(저온/공극) 영역: 초록~파랑 계열 (Hue: 43~135)
+                lower_void = np.array([43, 40, 40])
+                upper_void = np.array([135, 255, 255])
+                mask_void = cv2.inRange(hsv, lower_void, upper_void)
+                
+                # 노이즈 제거
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
+                mask_void = cv2.morphologyEx(mask_void, cv2.MORPH_OPEN, kernel)
                 
-                # 실제 마스킹 픽셀 비율 계산
-                total_pixels = TARGET_W * TARGET_H
-                filled_pixels = np.count_nonzero(mask_filled == 255)
-                final_ratio = (filled_pixels / total_pixels) * 100.0
+                count_filled = np.count_nonzero(mask_filled == 255)
+                count_void = np.count_nonzero(mask_void == 255)
+                total_valid = count_filled + count_void
+                
+                # 유효 열화상 영역 내 충진 비율 계산
+                if total_valid > 0:
+                    final_ratio = (count_filled / total_valid) * 100.0
+                else:
+                    total_pixels = TARGET_W * TARGET_H
+                    final_ratio = (count_filled / total_pixels) * 100.0
 
                 display_mask = cv2.cvtColor(mask_filled, cv2.COLOR_GRAY2BGR)
 
@@ -203,7 +216,6 @@ if uploaded_file is not None:
                     "충진율": f"{final_ratio:.2f}%"
                 }
                 
-                # 동일 시간 중복 등록 방지
                 if not st.session_state.history or st.session_state.history[0]["시간"] != new_record["시간"]:
                     st.session_state.history.insert(0, new_record)
 
