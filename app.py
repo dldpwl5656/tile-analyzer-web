@@ -8,7 +8,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
+    page_title="열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -51,7 +51,7 @@ if "coord_key" not in st.session_state:
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 타일 열화상 충진율 분석 시스템</h1>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
         <p>열화상 정밀 이진화 채널 분석 및 충진율 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
@@ -144,9 +144,9 @@ if uploaded_file is not None:
                 # Red 채널과 Green 채널 차분 계산
                 diff = r_channel - g_channel
                 
-                # 충진 영역 조건 설정 (diff > 25 및 Red 강도 > 145)
+                # 충진 영역 조건 설정 (diff > 27 및 Red 강도 > 148)
                 mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                mask_filled[(diff > 25) & (r_channel > 145)] = 255
+                mask_filled[(diff > 27) & (r_channel > 148)] = 255
                 
                 # 노이즈 및 외곽 경계 정제
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
