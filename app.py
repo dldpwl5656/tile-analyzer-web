@@ -8,7 +8,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="열화상 타일 정밀 충진율 분석 시스템",
+    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -88,8 +88,8 @@ if "coord_key" not in st.session_state:
 # 타이틀 배너 출력
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>열화상 정밀 정밀 이진화 채널 분석 및 충진율 진단 솔루션</p>
+        <h1>🔥 타일 열화상 충진율 분석 시스템</h1>
+        <p>열화상 정밀 이진화 채널 분석 및 충진율 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -107,25 +107,26 @@ if uploaded_file is not None:
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.markdown('<div class="sub-instruction">📌 <b>모서리 4곳 터치 지정:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sub-instruction">📌 <b>상단 타일 영역 4곳 터치 지정:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
             
-            canvas_w = 280
+            canvas_w = 320
             canvas_h = int(img_h * (canvas_w / img_w))
             
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
+            # 터치 지점 시각화 (원 및 순서 번호 표시)
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
-                cv2.circle(draw_img, (p[0], p[1]), 7, (255, 255, 255), -1)
-                cv2.circle(draw_img, (p[0], p[1]), 5, (239, 68, 68), -1)
-                cv2.putText(draw_img, str(i+1), (p[0]+9, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3)
-                cv2.putText(draw_img, str(i+1), (p[0]+9, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.circle(draw_img, (p[0], p[1]), 6, (255, 255, 255), -1)
+                cv2.circle(draw_img, (p[0], p[1]), 4, (239, 68, 68), -1)
+                cv2.putText(draw_img, str(i+1), (p[0]+8, p[1]+4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2)
+                cv2.putText(draw_img, str(i+1), (p[0]+8, p[1]+4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
 
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("##### 1. 원본 (터치 좌표 지정)")
+                st.markdown("##### 1. 원본 (상단 타일 모서리 지정)")
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
                     key=f"mobile_coord_{st.session_state.coord_key}"
@@ -160,39 +161,40 @@ if uploaded_file is not None:
                 TARGET_W, TARGET_H = 600, 300
                 dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
                 
+                # 투시 변환
                 matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
+                warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
-               # --- [정밀 충진 부위 추출 알고리즘] ---
-                # HSV 변환을 통해 붉은색~주황색~노란색 충진 영역 전체 마스킹
+                # --- [정밀 충진 부위 추출 알고리즘] ---
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 1. 빨간색 영역 (Hue: 0~10 및 160~180)
-                lower_red1 = np.array([0, 50, 50])
+                # 1. 빨간색 영역 (Left/Center 충진부)
+                lower_red1 = np.array([0, 45, 45])
                 upper_red1 = np.array([10, 255, 255])
-                lower_red2 = np.array([160, 50, 50])
+                lower_red2 = np.array([160, 45, 45])
                 upper_red2 = np.array([180, 255, 255])
                 mask_red = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
                 
-                # 2. 주황색~황토/노란색 충진 영역 (Hue: 11~32, Saturation/Value 범위 조절)
-                lower_orange_yellow = np.array([11, 70, 70])
+                # 2. 주황색~황토/노란색 영역 (Right 충진부)
+                lower_orange_yellow = np.array([11, 55, 60])
                 upper_orange_yellow = np.array([32, 255, 255])
                 mask_orange = cv2.inRange(hsv, lower_orange_yellow, upper_orange_yellow)
                 
-                # 전체 충진 영역 결합 (빨강 + 주황/노랑)
+                # 충진 영역 결합
                 mask_filled = mask_red | mask_orange
                 
-                # 모포놀로지 연산으로 노이즈 정돈 (3x3 커널)
+                # 노이즈 정돈 및 형태 보정
                 kernel = np.ones((3, 3), np.uint8)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
-                # 면적 및 충진율 계산
+                # 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.sum(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100
 
-                # 진단 마스크 시각화 (충진 부위: 흰색, 배경: 검은색)
+                # 이진화 진단 마스크 시각화 (충진: 흰색, 배경: 검은색)
                 display_mask = np.zeros_like(warped_img)
                 display_mask[mask_filled == 255] = [255, 255, 255]
                 
