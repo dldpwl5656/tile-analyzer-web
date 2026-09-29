@@ -136,16 +136,16 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 HSV 붉은색~주황색 결합 필터링 알고리즘]
+                # 📌 [최종 보정: HSV 주황~레드 확장 마스킹 알고리즘]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # 1. 붉은색~주황색 영역 (Hue 0 ~ 22)
-                lower_red1 = np.array([0, 50, 50])
-                upper_red1 = np.array([22, 255, 255])
+                # 1. 빨강 ~ 주황 영역 (Hue 0 ~ 28 범위 확장)
+                lower_red1 = np.array([0, 35, 40])
+                upper_red1 = np.array([28, 255, 255])
                 
-                # 2. 보라~진분홍 영역 (Hue 150 ~ 180)
-                lower_red2 = np.array([150, 50, 50])
+                # 2. 자홍 ~ 진분홍 영역 (Hue 145 ~ 180)
+                lower_red2 = np.array([145, 35, 40])
                 upper_red2 = np.array([180, 255, 255])
                 
                 mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
@@ -153,7 +153,7 @@ if uploaded_file is not None:
                 
                 mask_filled = cv2.bitwise_or(mask1, mask2)
                 
-                # 경계 미세 노이즈 제거
+                # 모폴로지 노이즈 보정 (3x3 마스크)
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
