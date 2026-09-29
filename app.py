@@ -8,7 +8,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
+    page_title="열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -16,19 +16,14 @@ st.set_page_config(
 # 시인성 최우선 라이트/모던 테마 커스텀 CSS
 st.markdown("""
     <style>
-        /* 전체 배경 및 기본 폰트 설정 */
         .stApp {
             background-color: #f8fafc;
             color: #1e293b;
         }
-        
-        /* 상단 여백 확보 및 패딩 조정 */
         .block-container { 
             padding-top: 2rem !important; 
             padding-bottom: 2rem !important; 
         }
-        
-        /* 타이틀 배너 카드 디자인 (잘림 완벽 방지) */
         .title-card {
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             padding: 1.2rem 1.5rem;
@@ -51,8 +46,6 @@ st.markdown("""
             font-size: 0.85rem !important;
             margin: 0.3rem 0 0 0 !important;
         }
-
-        /* Sub-caption 안내 문구 스타일 */
         .sub-instruction {
             background-color: #ffffff;
             padding: 0.6rem 1rem;
@@ -64,22 +57,16 @@ st.markdown("""
             margin-bottom: 1rem;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-
-        /* 일반 버튼 스타일링 */
         .stButton>button {
             border-radius: 8px !important;
             font-weight: 700 !important;
             transition: all 0.2s ease !important;
             height: 2.6rem !important;
         }
-
-        /* 사이드바 스타일링 */
         [data-testid="stSidebar"] {
             background-color: #ffffff !important;
             border-right: 1px solid #e2e8f0 !important;
         }
-
-        /* 이미지 컨테이너 카드화 */
         [data-testid="column"] {
             background: #ffffff;
             padding: 0.8rem;
@@ -98,11 +85,11 @@ if "pts" not in st.session_state:
 if "coord_key" not in st.session_state:
     st.session_state.coord_key = 0
 
-# 깔끔한 타이틀 배너 출력
+# 타이틀 배너 출력
 st.markdown("""
     <div class="title-card">
         <h1>🔥 타일 열화상 충진율 분석 시스템</h1>
-        <p> 열화상 색상 분석 및 정밀 충진율 진단 솔루션</p>
+        <p>열화상 정밀 정밀 이진화 채널 분석 및 충진율 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -117,7 +104,6 @@ if uploaded_file is not None:
         st.error("❌ 이미지를 불러올 수 없습니다.")
     else:
         img_h, img_w = orig_img.shape[:2]
-        
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
@@ -129,7 +115,6 @@ if uploaded_file is not None:
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
-            # 찍은 좌표 점 및 순서 숫자 그리기 (빨간 원 + 흰색 테두리)
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
                 cv2.circle(draw_img, (p[0], p[1]), 7, (255, 255, 255), -1)
@@ -178,66 +163,39 @@ if uploaded_file is not None:
                 matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
                 
-                blurred = cv2.GaussianBlur(warped_img, (5, 5), 0)
-                hsv_warped = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+                # --- [정밀 충진 부위 추출 알고리즘] ---
+                # 1. RGB 분리 후 Red/Orange (충진 영역) 강조 추출
+                warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
-                # --- [1. 완전 충진 영역 검출] ---
-                # A. 연두색/초록색 영역
-                lower_green = np.array([35, 40, 40])
-                upper_green = np.array([85, 255, 255])
-                mask_green = cv2.inRange(hsv_warped, lower_green, upper_green)
-                
-                # B. 노란색 영역
-                lower_yellow = np.array([15, 40, 100])
-                upper_yellow = np.array([34, 255, 255])
-                mask_yellow = cv2.inRange(hsv_warped, lower_yellow, upper_yellow)
-                
-                # C. 흰색 영역
-                lower_white = np.array([0, 0, 200])
-                upper_white = np.array([180, 80, 255])
-                mask_white = cv2.inRange(hsv_warped, lower_white, upper_white)
-                
-                mask_full = mask_green | mask_yellow | mask_white
-                
-                # --- [2. 경계/부분 충진 영역 검출] ---
-                # A. 주황색 영역
-                lower_orange = np.array([10, 50, 50])
-                upper_orange = np.array([14, 255, 255])
-                mask_orange = cv2.inRange(hsv_warped, lower_orange, upper_orange)
-                
-                # B. 빨간색 영역
-                lower_red1 = np.array([0, 50, 50])
-                upper_red1 = np.array([9, 255, 255])
-                lower_red2 = np.array([145, 50, 50])
+                # HSV 변환을 통해 빨강~주황 영역(충진부) 마스크 생성
+                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                lower_red1 = np.array([0, 70, 50])
+                upper_red1 = np.array([18, 255, 255])
+                lower_red2 = np.array([160, 70, 50])
                 upper_red2 = np.array([180, 255, 255])
-                mask_red = cv2.inRange(hsv_warped, lower_red1, upper_red1) | cv2.inRange(hsv_warped, lower_red2, upper_red2)
                 
-                mask_partial = mask_red | mask_orange
+                mask_filled = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
                 
-                kernel = np.ones((5, 5), np.uint8)
-                mask_full = cv2.morphologyEx(mask_full, cv2.MORPH_CLOSE, kernel)
-                mask_partial = cv2.morphologyEx(mask_partial, cv2.MORPH_CLOSE, kernel)
+                # 잡음 제거 (미세 노이즈 삭제)
+                kernel = np.ones((3, 3), np.uint8)
+                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
+                # 면적 및 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
-                full_pixels = np.sum(mask_full == 255)
-                partial_pixels = np.sum(mask_partial == 255)
-                
-                WEIGHT_FULL = 1.0
-                WEIGHT_PARTIAL = 0.45
-                weighted_filled_pixels = (full_pixels * WEIGHT_FULL) + (partial_pixels * WEIGHT_PARTIAL)
-                final_ratio = (weighted_filled_pixels / total_pixels) * 100
-                
-                display_mask = np.ones_like(warped_img) * 255
-                display_mask[mask_partial == 255] = [0, 0, 255]     # BGR: 빨간색 (경계/부분)
-                display_mask[mask_full == 255] = [0, 255, 0]        # BGR: 초록/연두색 (완전충진)
+                filled_pixels = np.sum(mask_filled == 255)
+                final_ratio = (filled_pixels / total_pixels) * 100
+
+                # 진단 마스크 시각화 (충진 부위: 빨강/흰색, 배경: 검은색)
+                display_mask = np.zeros_like(warped_img)
+                display_mask[mask_filled == 255] = [255, 255, 255] # BW 스타일 표현
                 
                 with col2:
                     st.markdown("##### 2. 투시 보정 정면")
-                    st.image(cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    st.image(warped_rgb, use_container_width=True)
                 
                 with col3:
-                    st.markdown("##### 3. 충진 진단 마스크")
-                    st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    st.markdown("##### 3. 충진 진단 마스크 (BW)")
+                    st.image(display_mask, use_container_width=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if final_ratio >= 80.0:
