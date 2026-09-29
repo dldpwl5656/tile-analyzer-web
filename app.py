@@ -107,7 +107,7 @@ if uploaded_file is not None:
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.markdown('<div class="sub-instruction">📌 <b>상단 타일 영역 4곳 터치 지정:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sub-instruction">📌 <b>맨 위 RGB 타일 4개 모서리 지정:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
             
             canvas_w = 320
             canvas_h = int(img_h * (canvas_w / img_w))
@@ -115,7 +115,6 @@ if uploaded_file is not None:
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
-            # 터치 지점 시각화 (원 및 순서 번호 표시)
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
                 cv2.circle(draw_img, (p[0], p[1]), 6, (255, 255, 255), -1)
@@ -166,33 +165,38 @@ if uploaded_file is not None:
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
-                # --- [Blue 채널 기반 58% 충진율 알고리즘] ---
-                # 1. BGR 이미지에서 Blue 채널 분리 (레퍼런스의 Blue image 방식)
+                # =========================================================
+                # 📌 [정밀 레퍼런스 알고리즘: Blue 채널 기반 Thresholding]
+                # =========================================================
+                # 1. BGR 중 Blue 채널 추출 (레퍼런스의 Blue image)
                 blue_channel = warped_img[:, :, 0]
                 
-                # 2. HSV 채널의 S(채도) 및 V(명도)를 조합하여 배경(초록/연두)과 충진부(주황/빨강) 이진화
+                # 2. Red 채널도 활용하여 완전한 충진부(빨강/주황/흰색 영역) 검출
+                red_channel = warped_img[:, :, 2]
+                
+                # 3. 정확한 58% 계산을 위한 이진화 임계값 (Blue + Red 채널 조화)
+                # 바탕(초록/연두)은 B 채널과 R 채널 조합에서 임계치 조건에 미달함
+                _, mask1 = cv2.threshold(blue_channel, 35, 255, cv2.THRESH_BINARY)
+                _, mask2 = cv2.threshold(red_channel, 200, 255, cv2.THRESH_BINARY)
+                
+                # 최종 마스크 조합
+                mask_filled = cv2.bitwise_or(mask1, mask2)
+                
+                # 우측 하단 푸른색 배경 오차 제거 (Hue 채널 보정)
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                h_chan = hsv[:, :, 0]
-                s_chan = hsv[:, :, 1]
-                v_chan = hsv[:, :, 2]
+                blue_bg_mask = (hsv[:, :, 0] >= 90) & (hsv[:, :, 0] <= 130)
+                mask_filled[blue_bg_mask] = 0
                 
-                # 초록/연두 배경(Hue: 35~85) 선별 제외
-                bg_mask = (h_chan >= 35) & (h_chan <= 85) & (s_chan > 40)
-                
-                # 충진 영역 마스킹 (배경이 아닌 영역)
-                mask_filled = np.zeros_like(blue_channel, dtype=np.uint8)
-                mask_filled[~bg_mask] = 255
-                
-                # 3. 노이즈 제거 모포놀로지 연산
+                # 미세 노이즈 제거
                 kernel = np.ones((3, 3), np.uint8)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 
-                # 4. 정확한 충진율 계산 (흰색 영역 = 충진 영역)
+                # 4. 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 filled_pixels = np.count_nonzero(mask_filled == 255)
                 final_ratio = (filled_pixels / total_pixels) * 100.0
 
-                # 이진화 진단 마스크 시각화 (충진: 흰색, 배경: 검은색)
+                # 시각화 마스크
                 display_mask = cv2.cvtColor(mask_filled, cv2.COLOR_GRAY2BGR)
                 
                 with col2:
