@@ -13,64 +13,79 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 열화상 컨셉 커스텀 CSS (제목 잘림 방지 & 다크 네온 테마)
+# 시인성 최우선 라이트/모던 테마 커스텀 CSS
 st.markdown("""
     <style>
-        /* 메인 배경 및 텍스트 기본 설정 */
+        /* 전체 배경 및 기본 폰트 설정 */
         .stApp {
-            background-color: #0e1117;
-            color: #e0e0e0;
+            background-color: #f8fafc;
+            color: #1e293b;
         }
         
-        /* 상단 여백 최소화 */
+        /* 상단 여백 확보 및 패딩 조정 */
         .block-container { 
-            padding-top: 1.5rem; 
-            padding-bottom: 1rem; 
+            padding-top: 2rem !important; 
+            padding-bottom: 2rem !important; 
         }
         
-        /* 제목 텍스트 반응형 & 잘림 방지 */
-        .main-title {
-            font-size: clamp(1.1rem, 2.5vw, 1.8rem);
-            font-weight: 800;
-            color: #ffffff;
-            background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-bottom: 0.8rem;
-            padding-bottom: 0.2rem;
+        /* 타이틀 배너 카드 디자인 (잘림 완벽 방지) */
+        .title-card {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            padding: 1.2rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.2rem;
+        }
+        .title-card h1 {
+            color: #ffffff !important;
+            font-size: 1.5rem !important;
+            font-weight: 800 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.3 !important;
+            white-space: normal !important;
+            word-break: keep-all !important;
+        }
+        .title-card p {
+            color: #dbeafe !important;
+            font-size: 0.85rem !important;
+            margin: 0.3rem 0 0 0 !important;
         }
 
-        /* 서브 캡션 및 안내 문구 */
-        .sub-caption {
-            color: #a0aec0;
+        /* Sub-caption 안내 문구 스타일 */
+        .sub-instruction {
+            background-color: #ffffff;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+            font-weight: 600;
+            color: #334155;
             font-size: 0.9rem;
             margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
-        /* 버튼 테마 커스텀 (네온 스타일) */
+        /* 일반 버튼 스타일링 */
         .stButton>button {
-            width: 100%;
-            border-radius: 8px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            color: #38bdf8;
-            border: 1px solid #0284c7;
-            transition: all 0.3s ease;
-        }
-        .stButton>button:hover {
-            background: #0284c7;
-            color: #ffffff;
-            border-color: #38bdf8;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+            border-radius: 8px !important;
+            font-weight: 700 !important;
+            transition: all 0.2s ease !important;
+            height: 2.6rem !important;
         }
 
         /* 사이드바 스타일링 */
         [data-testid="stSidebar"] {
-            background-color: #161b22;
-            border-right: 1px solid #30363d;
+            background-color: #ffffff !important;
+            border-right: 1px solid #e2e8f0 !important;
+        }
+
+        /* 이미지 컨테이너 카드화 */
+        [data-testid="column"] {
+            background: #ffffff;
+            padding: 0.8rem;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
     </style>
 """, unsafe_allow_html=True)
@@ -83,8 +98,13 @@ if "pts" not in st.session_state:
 if "coord_key" not in st.session_state:
     st.session_state.coord_key = 0
 
-# 메인 타이틀 출력 (CSS 클래스 적용)
-st.markdown('<div class="main-title">🔥 열화상 타일 정밀 충진율 분석 시스템</div>', unsafe_allow_html=True)
+# 깔끔한 타이틀 배너 출력
+st.markdown("""
+    <div class="title-card">
+        <h1>🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템</h1>
+        <p>LH 시방서 기준 열화상 색상 분석 및 정밀 충진율 진단 솔루션</p>
+    </div>
+""", unsafe_allow_html=True)
 
 st.sidebar.header("📁 이미지 파일 선택")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -101,7 +121,7 @@ if uploaded_file is not None:
         col_main, col_history = st.columns([8, 4])
         
         with col_main:
-            st.markdown('<div class="sub-caption">📌 <b>모서리 4곳 터치:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sub-instruction">📌 <b>모서리 4곳 터치 지정:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
             
             canvas_w = 280
             canvas_h = int(img_h * (canvas_w / img_w))
@@ -109,16 +129,18 @@ if uploaded_file is not None:
             bg_img_rgb = cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(bg_img_rgb).resize((canvas_w, canvas_h))
             
-            # 찍은 좌표 점 및 순서 숫자 그리기
+            # 찍은 좌표 점 및 순서 숫자 그리기 (빨간 원 + 흰색 테두리)
             draw_img = np.array(pil_image).copy()
             for i, p in enumerate(st.session_state.pts):
-                cv2.circle(draw_img, (p[0], p[1]), 6, (0, 242, 254), -1)
-                cv2.putText(draw_img, str(i+1), (p[0]+8, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                cv2.circle(draw_img, (p[0], p[1]), 7, (255, 255, 255), -1)
+                cv2.circle(draw_img, (p[0], p[1]), 5, (239, 68, 68), -1)
+                cv2.putText(draw_img, str(i+1), (p[0]+9, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3)
+                cv2.putText(draw_img, str(i+1), (p[0]+9, p[1]+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**1. 원본 (터치 좌표 지정)**")
+                st.markdown("##### 1. 원본 (터치 좌표 지정)")
                 value = streamlit_image_coordinates(
                     Image.fromarray(draw_img),
                     key=f"mobile_coord_{st.session_state.coord_key}"
@@ -132,14 +154,14 @@ if uploaded_file is not None:
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
-                if st.button("🔄 좌표 리셋"):
+                st.write(f"📍 선택된 좌표: **{len(st.session_state.pts)} / 4**")
+                if st.button("🔄 좌표 리셋", use_container_width=True):
                     st.session_state.pts = []
                     st.session_state.coord_key += 1
                     st.rerun()
                     
             with col_btn2:
-                run_btn = st.button("🚀 정밀 분석 실행", disabled=(len(st.session_state.pts) != 4))
+                run_btn = st.button("🚀 정밀 분석 실행", disabled=(len(st.session_state.pts) != 4), type="primary", use_container_width=True)
 
             # 분석 실행
             if run_btn and len(st.session_state.pts) == 4:
@@ -210,21 +232,22 @@ if uploaded_file is not None:
                 display_mask[mask_full == 255] = [0, 255, 0]        # BGR: 초록/연두색 (완전충진)
                 
                 with col2:
-                    st.markdown("**2. 투시 보정 정면**")
+                    st.markdown("##### 2. 투시 보정 정면")
                     st.image(cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB), use_container_width=True)
                 
                 with col3:
-                    st.markdown("**3. 충진 진단 마스크**")
+                    st.markdown("##### 3. 충진 진단 마스크")
                     st.image(cv2.cvtColor(display_mask, cv2.COLOR_BGR2RGB), use_container_width=True)
 
+                st.markdown("<br>", unsafe_allow_html=True)
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
                     **[현장 조치 지침]**
-                    * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
-                    * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                    * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
+                    * **공사 완료 후:** 줄눈 타공 후 에폭시 수지 고압 주입 보강
                     """)
 
                 now = datetime.now()
@@ -239,10 +262,10 @@ if uploaded_file is not None:
 
             else:
                 with col2:
-                    st.markdown("**2. 투시 보정 정면**")
+                    st.markdown("##### 2. 투시 보정 정면")
                     st.info("4곳 터치 후 분석 버튼 클릭")
                 with col3:
-                    st.markdown("**3. 충진 진단 마스크**")
+                    st.markdown("##### 3. 충진 진단 마스크")
                     st.info("분석 대기 중")
 
         with col_history:
@@ -252,8 +275,8 @@ if uploaded_file is not None:
                 st.dataframe(df, use_container_width=True)
                 
                 csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv")
-                if st.button("🧹 이력 초기화"):
+                st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
+                if st.button("🧹 이력 초기화", use_container_width=True):
                     st.session_state.history = []
                     st.session_state.pts = []
                     st.session_state.coord_key += 1
