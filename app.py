@@ -136,23 +136,21 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [범용 정밀 RGB 차분 기반 충진 이진화 파이프라인]
+                # 📌 [LAB 색상 공간 a* 채널 + Otsu 자동 이진화 정밀 알고리즘]
                 # =========================================================
-                r_chan = warped_img[:, :, 2].astype(np.float32)
-                g_chan = warped_img[:, :, 1].astype(np.float32)
-                b_chan = warped_img[:, :, 0].astype(np.float32)
+                # 1. LAB 색상 공간 변환 (a* 채널은 Red vs Green을 명확히 분리)
+                lab_img = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
+                a_channel = lab_img[:, :, 1]
                 
-                # 열화상 충진 특성: Red 성분 강조 및 Green/Blue 대비
-                diff_score = r_chan - (g_chan * 0.75 + b_chan * 0.25)
+                # 2. 가우시안 블러로 미세 노이즈 제거
+                blurred = cv2.GaussianBlur(a_channel, (5, 5), 0)
                 
-                # 범용 충진 영역 마스킹 (Red 임계값 및 차분 가중치 적용)
-                mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                mask_filled[(diff_score > 18) & (r_chan > 140)] = 255
+                # 3. Otsu 자동 임계값 처리로 빨강(충진) 영역 분리
+                _, mask_filled = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
                 
-                # 노이즈 정제 (열화상 경계선 보정)
+                # 4. 모폴로지 연산으로 경계선 정밀 보정
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
-                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
                 # 최종 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
