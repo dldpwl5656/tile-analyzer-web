@@ -166,37 +166,34 @@ if uploaded_file is not None:
                 warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
-                # --- [정밀 충진 부위 추출 알고리즘] ---
+                # --- [Blue 채널 기반 58% 충진율 알고리즘] ---
+                # 1. BGR 이미지에서 Blue 채널 분리 (레퍼런스의 Blue image 방식)
+                blue_channel = warped_img[:, :, 0]
+                
+                # 2. HSV 채널의 S(채도) 및 V(명도)를 조합하여 배경(초록/연두)과 충진부(주황/빨강) 이진화
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                h_chan = hsv[:, :, 0]
+                s_chan = hsv[:, :, 1]
+                v_chan = hsv[:, :, 2]
                 
-                # 1. 빨간색 영역 (Left/Center 충진부)
-                lower_red1 = np.array([0, 45, 45])
-                upper_red1 = np.array([10, 255, 255])
-                lower_red2 = np.array([160, 45, 45])
-                upper_red2 = np.array([180, 255, 255])
-                mask_red = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
+                # 초록/연두 배경(Hue: 35~85) 선별 제외
+                bg_mask = (h_chan >= 35) & (h_chan <= 85) & (s_chan > 40)
                 
-                # 2. 주황색~황토/노란색 영역 (Right 충진부)
-                lower_orange_yellow = np.array([11, 55, 60])
-                upper_orange_yellow = np.array([32, 255, 255])
-                mask_orange = cv2.inRange(hsv, lower_orange_yellow, upper_orange_yellow)
+                # 충진 영역 마스킹 (배경이 아닌 영역)
+                mask_filled = np.zeros_like(blue_channel, dtype=np.uint8)
+                mask_filled[~bg_mask] = 255
                 
-                # 충진 영역 결합
-                mask_filled = mask_red | mask_orange
-                
-                # 노이즈 정돈 및 형태 보정
+                # 3. 노이즈 제거 모포놀로지 연산
                 kernel = np.ones((3, 3), np.uint8)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
-                mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
-                # 충진율 계산
+                # 4. 정확한 충진율 계산 (흰색 영역 = 충진 영역)
                 total_pixels = TARGET_W * TARGET_H
-                filled_pixels = np.sum(mask_filled == 255)
-                final_ratio = (filled_pixels / total_pixels) * 100
+                filled_pixels = np.count_nonzero(mask_filled == 255)
+                final_ratio = (filled_pixels / total_pixels) * 100.0
 
                 # 이진화 진단 마스크 시각화 (충진: 흰색, 배경: 검은색)
-                display_mask = np.zeros_like(warped_img)
-                display_mask[mask_filled == 255] = [255, 255, 255]
+                display_mask = cv2.cvtColor(mask_filled, cv2.COLOR_GRAY2BGR)
                 
                 with col2:
                     st.markdown("##### 2. 투시 보정 정면")
