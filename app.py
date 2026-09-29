@@ -101,8 +101,8 @@ if "coord_key" not in st.session_state:
 # 깔끔한 타이틀 배너 출력
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 LH 기준 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>LH 시방서 기준 열화상 색상 분석 및 정밀 충진율 진단 솔루션</p>
+        <h1>🔥 타일 열화상 충진율 분석 시스템</h1>
+        <p> 열화상 색상 분석 및 정밀 충진율 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -241,13 +241,13 @@ if uploaded_file is not None:
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[LH 기준 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                 else:
-                    st.error(f"🚨 **[LH 기준 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
                     st.markdown("""
                     **[현장 조치 지침]**
-                    * **공사 중:** 타일 즉시 철거 후 개량압착공법으로 재시공
-                    * **공사 완료 후:** 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                    * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
+                    * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                     """)
 
                 now = datetime.now()
