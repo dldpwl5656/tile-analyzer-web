@@ -8,7 +8,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # 페이지 레이아웃 및 브라우저 탭 설정
 st.set_page_config(
-    page_title="열화상 타일 정밀 충진율 분석 시스템",
+    page_title="LH 열화상 타일 정밀 충진율 분석 시스템",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -136,20 +136,26 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [58% 목표 캘리브레이션 정밀 충진 이진화 파이프라인]
+                # 📌 [HSV 정밀 색상 필터링 기반 충진율 검출 알고리즘]
                 # =========================================================
-                r_channel = warped_img[:, :, 2].astype(np.int16)
-                g_channel = warped_img[:, :, 1].astype(np.int16)
+                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 
-                # Red 채널과 Green 채널 차분 계산
-                diff = r_channel - g_channel
+                # 열화상의 주황~빨강 영역 범위 지정 (노란색/연두색 배경 제외)
+                # 범위 1: 빨간색~주황색 영역
+                lower_red1 = np.array([0, 100, 120])
+                upper_red1 = np.array([18, 255, 255])
                 
-                # 충진 영역 조건 설정 (diff > 27 및 Red 강도 > 148)
-                mask_filled = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                mask_filled[(diff > 27) & (r_channel > 148)] = 255
+                # 범위 2: 보라~진빨강 영역 (HSV 170~180)
+                lower_red2 = np.array([168, 100, 120])
+                upper_red2 = np.array([180, 255, 255])
                 
-                # 노이즈 및 외곽 경계 정제
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                
+                mask_filled = cv2.bitwise_or(mask1, mask2)
+                
+                # 노이즈 및 자잘한 잔상 제거 (모폴로지 연산)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_OPEN, kernel)
                 mask_filled = cv2.morphologyEx(mask_filled, cv2.MORPH_CLOSE, kernel)
                 
