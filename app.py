@@ -88,7 +88,7 @@ if "coord_key" not in st.session_state:
 # 타이틀 배너 출력
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 타일 열화상 충진율 분석 시스템</h1>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
         <p>열화상 정밀 정밀 이진화 채널 분석 및 충진율 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
