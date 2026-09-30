@@ -12,47 +12,81 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 커스텀 CSS
+# ---------------------------------------------------------
+# 🎨 전면 레이아웃 오와열 정돈 CSS Custom
+# ---------------------------------------------------------
 st.markdown("""
     <style>
-        html, body, [class*="css"] { font-size: 1.2rem !important; }
+        html, body, [class*="css"] { font-size: 1.1rem !important; }
         .stApp { background-color: #f8fafc; color: #0f172a; }
-        .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; max-width: 95% !important; }
+        .block-container { 
+            padding-top: 1.5rem !important; 
+            padding-bottom: 2rem !important; 
+            max-width: 96% !important; 
+        }
+        
+        /* 상단 메인 타이틀 카드 */
         .title-card {
             background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-            padding: 1.5rem 2rem;
-            border-radius: 14px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
-            margin-bottom: 1.5rem;
+            padding: 1.2rem 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1.2rem;
         }
-        .title-card h1 { color: #ffffff !important; font-size: 2.2rem !important; font-weight: 800 !important; margin: 0 !important; }
-        .title-card p { color: #dbeafe !important; font-size: 1.15rem !important; margin-top: 0.5rem !important; }
+        .title-card h1 { color: #ffffff !important; font-size: 2.0rem !important; font-weight: 800 !important; margin: 0 !important; }
+        .title-card p { color: #dbeafe !important; font-size: 1.05rem !important; margin-top: 0.3rem !important; margin-bottom: 0 !important; }
+        
+        /* 안내 바 */
         .sub-instruction {
             background-color: #ffffff;
-            padding: 1rem 1.2rem;
-            border-radius: 10px;
-            border-left: 6px solid #2563eb;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            border-left: 5px solid #2563eb;
             font-weight: 700;
             color: #1e293b;
-            font-size: 1.3rem !important;
-            margin-bottom: 1.2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            font-size: 1.15rem !important;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
         }
-        .stButton>button {
-            font-size: 1.2rem !important;
-            font-weight: 700 !important;
-            padding: 0.7rem 1.5rem !important;
-            border-radius: 8px !important;
-        }
-        h5 {
-            font-size: 1.4rem !important;
-            font-weight: 700 !important;
+        
+        /* 공통 헤더 5번 (각 패널 제목) */
+        .panel-header {
+            font-size: 1.25rem !important;
+            font-weight: 800 !important;
             color: #1e293b !important;
             margin-bottom: 0.8rem !important;
+            min-height: 2rem;
+            display: flex;
+            align-items: center;
         }
-        h3, .stSubheader { font-size: 1.6rem !important; font-weight: 800 !important; }
-        [data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
-        [data-testid="column"] { background: #ffffff; padding: 1.2rem; border-radius: 12px; border: 1px solid #cbd5e1; }
+        
+        /* 컬럼 박스 통일 */
+        [data-testid="column"] { 
+            background: #ffffff; 
+            padding: 1.2rem; 
+            border-radius: 12px; 
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 버튼 스타일 */
+        .stButton>button {
+            font-size: 1.1rem !important;
+            font-weight: 700 !important;
+            border-radius: 8px !important;
+            height: 2.8rem !important;
+        }
+
+        /* 캡션 텍스트 박스 높이 맞춤 */
+        .info-card-box {
+            background-color: #f1f5f9;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            margin-top: 0.5rem;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -66,7 +100,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>열화상 이미지를 아용한 타일 뒷채움 비파괴검사</p>
+        <p>열화상 이미지를 이용한 타일 뒷채움 비파괴검사</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -88,6 +122,7 @@ if uploaded_file is not None:
         
         st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
         
+        # 패널 규격 통일용 Canvas W/H 설정
         MAX_W = 400
         if img_w > MAX_W:
             canvas_w = MAX_W
@@ -106,10 +141,11 @@ if uploaded_file is not None:
             cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
             cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
 
+        # 3컬럼 정밀 1:1:1 레이아웃
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
-            st.markdown("##### 1. RGB 타일 (영역 지정)")
+            st.markdown('<div class="panel-header">1. RGB 타일 (영역 지정)</div>', unsafe_allow_html=True)
             value = streamlit_image_coordinates(
                 Image.fromarray(draw_img),
                 key=f"mobile_coord_{st.session_state.coord_key}"
@@ -121,9 +157,11 @@ if uploaded_file is not None:
                     st.session_state.pts.append(point)
                     st.rerun()
 
+            st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
+            
+            # 하단 버튼 열 1:1 세분화
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
                 if st.button("🔄 리셋", use_container_width=True):
                     st.session_state.pts = []
                     st.session_state.coord_key += 1
@@ -147,26 +185,19 @@ if uploaded_file is not None:
             warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
-            # ---------------------------------------------------------
-            # 🛠️ 이미지 전처리 (노이즈 보정용 가우시안 블러)
-            # ---------------------------------------------------------
+            # 이미지 전처리
             blurred_img = cv2.GaussianBlur(warped_img, (5, 5), 0)
             hsv = cv2.cvtColor(blurred_img, cv2.COLOR_BGR2HSV)
             
-            # ---------------------------------------------------------
-            # 🎨 HSV 마스크 검출
-            # ---------------------------------------------------------
-            # 1. 초록색 (완전 충진 영역)
+            # HSV 마스크 검출
             lower_green = np.array([35, 30, 30])
             upper_green = np.array([85, 255, 255])
             mask_green = cv2.inRange(hsv, lower_green, upper_green)
 
-            # 2. 노란색 (동적 가중치 적용 영역)
             lower_yellow = np.array([15, 30, 30])
             upper_yellow = np.array([34, 255, 255])
             mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
 
-            # 3. 빨간색 (공복/미충진 영역)
             lower_red1 = np.array([0, 30, 30])
             upper_red1 = np.array([14, 255, 255])
             lower_red2 = np.array([170, 30, 30])
@@ -175,15 +206,13 @@ if uploaded_file is not None:
             mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
             mask_red = cv2.bitwise_or(mask_red1, mask_red2)
 
-            # 노이즈 제거 (모폴로지 연산)
+            # 모폴로지 연산
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_CLOSE, kernel)
             mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_CLOSE, kernel)
             mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel)
             
-            # ---------------------------------------------------------
-            # 📊 보정된 충진율 산출 알고리즘 (비례 보정 방식)
-            # ---------------------------------------------------------
+            # 충진율 연산
             total_pixels = TARGET_W * TARGET_H
             green_pixels = np.sum(mask_green == 255)
             yellow_pixels = np.sum(mask_yellow == 255)
@@ -193,42 +222,38 @@ if uploaded_file is not None:
             yellow_pct = (yellow_pixels / total_pixels) * 100.0
             red_pct = (red_pixels / total_pixels) * 100.0
 
-            # 1. 노랑/초록 분포 패턴에 따른 기본 충진율 산출
             if yellow_pixels >= green_pixels:
-                yellow_weight = 1.0  # 노란색 우세 시 100% 반영
+                yellow_weight = 1.0
                 base_calc = (green_pct * 1.0) + (yellow_pct * yellow_weight)
                 mode_desc = "노란색 우세 패턴 (노랑+초록 영역 완전 충진 판단)"
             else:
-                yellow_weight = 0.85  # 초록색 우세 시 노란색 85% 반영
+                yellow_weight = 0.85
                 base_calc = (green_pct * 1.0) + (yellow_pct * yellow_weight)
                 mode_desc = "초록색 우세 패턴 (초록 100%, 노랑 85% 보정 적용)"
 
-            # 2. 비례 보정 계수 적용 (SCALE_FACTOR)
-            # 72.32% 기준 이미지 ➔ 약 86% 산출, 94% 등 높은 이미지 ➔ 과도하게 100%로 막히는 현상 방지
             SCALE_FACTOR = 1.189
             calculated_ratio = base_calc * SCALE_FACTOR
             final_ratio = min(calculated_ratio, 100.0)
 
-            # ---------------------------------------------------------
-            # 🖼️ 무채색(Grayscale) 진단 마스크 시각화
-            # ---------------------------------------------------------
-            # 바탕(공복/미충진): 어두운 회색(15), 노란색 영역: 중간 회색(180), 초록색 영역: 흰색(255)
+            # 무채색 진단 마스크 시각화
             display_mask = np.full((TARGET_H, TARGET_W, 3), 40, dtype=np.uint8)
-            display_mask[mask_yellow == 255] = [180, 180, 180]  # 일반 충진(회색)
-            display_mask[mask_green == 255] = [255, 255, 255]   # 완전 충진(흰색)
-            display_mask[mask_red == 255] = [15, 15, 15]        # 미충진/공복(어두움)
+            display_mask[mask_yellow == 255] = [180, 180, 180]
+            display_mask[mask_green == 255] = [255, 255, 255]
+            display_mask[mask_red == 255] = [15, 15, 15]
 
             with col2:
-                st.markdown("##### 2. 정면 보정")
+                st.markdown('<div class="panel-header">2. 정면 보정</div>', unsafe_allow_html=True)
                 st.image(warped_rgb, use_container_width=True)
             
             with col3:
-                st.markdown("##### 3. 무채색 진단 마스크")
+                st.markdown('<div class="panel-header">3. 무채색 진단 마스크</div>', unsafe_allow_html=True)
                 st.image(display_mask, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-# 최종 결과 및 판단 모드 출력
+            # ---------------------------------------------------------
+            # 📊 하단 결과 및 지침 출력 패널
+            # ---------------------------------------------------------
             if final_ratio >= 80.0:
                 st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
             else:
@@ -239,8 +264,12 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
-            st.caption(f"⚙️ **분석 모드:** {mode_desc} (비례 보정율 1.189x 반영)")
-            st.caption(f"💡 **구역별 분포:** 완전 충진 영역(흰색): **{green_pct:.1f}%** | 일반 충진 영역(회색): **{yellow_pct:.1f}%** | 미충진/공복(어두움): **{red_pct:.1f}%**")
+            st.markdown(f"""
+            <div class="info-card-box">
+                ⚙️ <b>분석 모드:</b> {mode_desc} (비례 보정율 1.189x 반영)<br>
+                💡 <b>구역별 분포:</b> 완전 충진 영역(흰색): <b>{green_pct:.1f}%</b> | 일반 충진 영역(회색): <b>{yellow_pct:.1f}%</b> | 미충진/공복(어두움): <b>{red_pct:.1f}%</b>
+            </div>
+            """, unsafe_allow_html=True)
 
             now = datetime.now()
             new_record = {
@@ -257,10 +286,10 @@ if uploaded_file is not None:
 
         else:
             with col2:
-                st.markdown("##### 2. 정면 보정")
+                st.markdown('<div class="panel-header">2. 정면 보정</div>', unsafe_allow_html=True)
                 st.info("4곳 터치 후 분석 버튼 클릭")
             with col3:
-                st.markdown("##### 3. 무채색 진단 마스크")
+                st.markdown('<div class="panel-header">3. 무채색 진단 마스크</div>', unsafe_allow_html=True)
                 st.info("분석 대기 중")
 
         st.markdown("<br>", unsafe_allow_html=True)
