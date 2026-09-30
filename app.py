@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>동적 HSV 마스크 및 무채색 진단 기반 타일 모르타르 충진율 측정 모듈</p>
+        <p>열화상 이미지를 아용한 타일 뒷채움 비파괴검사</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -233,6 +233,11 @@ if uploaded_file is not None:
                 st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
             else:
                 st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
+                    st.markdown("""
+                    **[현장 조치 지침]**
+                    * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
+                    * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                    """)
 
             st.caption(f"⚙️ **분석 모드:** {mode_desc} (비례 보정율 1.189x 반영)")
             st.caption(f"💡 **구역별 분포:** 완전 충진 영역(흰색): **{green_pct:.1f}%** | 일반 충진 영역(회색): **{yellow_pct:.1f}%** | 미충진/공복(어두움): **{red_pct:.1f}%**")
