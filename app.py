@@ -147,36 +147,34 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 색 구분 및 가중치 적용 정밀 알고리즘]
+                # 📌 [정밀 임계값 및 배경 오인식 완벽 차단 알고리즘]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
                 l_chan, a_chan, b_chan = cv2.split(lab)
                 
-                # A) 빛반사 및 고온 핵심 영역 (Red, Pink, Magenta, Pure White Glare) -> 가중치 1.0
-                # 1. HSV 붉은색 범위 1 (Hue: 0~15) 및 2 (Hue: 165~180)
-                mask_r1 = cv2.inRange(hsv, np.array([0, 50, 100]), np.array([15, 255, 255]))
-                mask_r2 = cv2.inRange(hsv, np.array([165, 50, 100]), np.array([180, 255, 255]))
-                # 2. LAB A채널(적색 성분) 높은 영역
-                _, mask_lab_red = cv2.threshold(a_chan, 138, 255, cv2.THRESH_BINARY)
-                # 3. 빛반사/포화 영역 (명도 아주 높은 영역)
-                _, mask_glare = cv2.threshold(l_chan, 220, 255, cv2.THRESH_BINARY)
+                # 1. 완전 충진 (가중치 1.0): 붉은색, 자홍색, 강한 고온 반사광
+                mask_red_hsv1 = cv2.inRange(hsv, np.array([0, 100, 120]), np.array([9, 255, 255]))
+                mask_red_hsv2 = cv2.inRange(hsv, np.array([170, 100, 120]), np.array([180, 255, 255]))
+                _, mask_lab_a = cv2.threshold(a_chan, 148, 255, cv2.THRESH_BINARY)  # 적색도 기준 상향
+                _, mask_glare = cv2.threshold(l_chan, 235, 255, cv2.THRESH_BINARY)  # 하이라이트 반사광
                 
-                full_fill_mask = cv2.bitwise_or(cv2.bitwise_or(mask_r1, mask_r2), mask_lab_red)
+                full_fill_mask = cv2.bitwise_or(cv2.bitwise_or(mask_red_hsv1, mask_red_hsv2), mask_lab_a)
                 full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_glare)
 
-                # B) 경계 영역 (Orange, Warm Yellow, Light Green-Yellow) -> 가중치 0.45
-                # HSV 주황/노랑/연두 범위 (Hue: 16~45)
-                mask_boundary_hsv = cv2.inRange(hsv, np.array([16, 40, 90]), np.array([45, 255, 255]))
-                # 완전 충진 영역 제외
-                boundary_mask = cv2.bitwise_and(mask_boundary_hsv, cv2.bitwise_not(full_fill_mask))
+                # 2. 경계 영역 (가중치 0.45): 주황색~진한 노란색 (초록 배경 전면 제외)
+                # Hue 범위: 10 ~ 28 (연두/초록 완전히 배제)
+                mask_orange_hsv = cv2.inRange(hsv, np.array([10, 120, 130]), np.array([28, 255, 255]))
+                
+                # 완전 충진 부위와 겹치는 영역 제거
+                boundary_mask = cv2.bitwise_and(mask_orange_hsv, cv2.bitwise_not(full_fill_mask))
 
-                # C) 노이즈 제거 (Morphology Operation)
+                # 3. 노이즈 필터링 (Morphology)
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
                 full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel)
                 boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel)
 
-                # D) 충진율 계산 (가중치 적용)
+                # 4. 충진율 가중치 계산
                 total_pixels = TARGET_W * TARGET_H
                 p_full = np.count_nonzero(full_fill_mask == 255)
                 p_boundary = np.count_nonzero(boundary_mask == 255)
@@ -184,13 +182,11 @@ if uploaded_file is not None:
                 weighted_score = (p_full * 1.0) + (p_boundary * 0.45)
                 final_ratio = (weighted_score / total_pixels) * 100.0
 
-                # E) 진단 마스크 (BW) 생성
-                # 완전 충진/빛반사: 흰색(255), 경계: 회색(180) 시각화 / 최종 이진화 통합
+                # 5. 진단 마스크 시각화 (완전충진: 흰색 255, 경계: 회색 180, 공극: 검은색 0)
                 display_mask = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                display_mask[full_fill_mask == 255] = 255
                 display_mask[boundary_mask == 255] = 180
+                display_mask[full_fill_mask == 255] = 255
                 
-                # RGB 표현용
                 display_mask_bgr = cv2.cvtColor(display_mask, cv2.COLOR_GRAY2BGR)
 
                 with col2:
