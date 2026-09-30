@@ -147,34 +147,48 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [정밀 임계값 및 배경 오인식 완벽 차단 알고리즘]
+                # 📌 [정밀 고온 줄기 검출 및 배경 분리 강화 알고리즘]
                 # =========================================================
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
                 lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
-                l_chan, a_chan, b_chan = cv2.split(lab)
-                
-                # 1. 완전 충진 (가중치 1.0): 붉은색, 자홍색, 강한 고온 반사광
-                mask_red_hsv1 = cv2.inRange(hsv, np.array([0, 100, 120]), np.array([9, 255, 255]))
-                mask_red_hsv2 = cv2.inRange(hsv, np.array([170, 100, 120]), np.array([180, 255, 255]))
-                _, mask_lab_a = cv2.threshold(a_chan, 148, 255, cv2.THRESH_BINARY)  # 적색도 기준 상향
-                _, mask_glare = cv2.threshold(l_chan, 235, 255, cv2.THRESH_BINARY)  # 하이라이트 반사광
-                
-                full_fill_mask = cv2.bitwise_or(cv2.bitwise_or(mask_red_hsv1, mask_red_hsv2), mask_lab_a)
+                b, g, r = cv2.split(warped_img)
+                l_chan, a_chan, _ = cv2.split(lab)
+
+                # 1. 완전 충진 영역 (가중치 1.0): 붉은색, 자홍색, 강한 고온 빛반사
+                # A) HSV Red 범위 (밝거나 어두운 붉은색 포함)
+                mask_r1 = cv2.inRange(hsv, np.array([0, 50, 80]), np.array([12, 255, 255]))
+                mask_r2 = cv2.inRange(hsv, np.array([160, 50, 80]), np.array([180, 255, 255]))
+                # B) RGB Red 우세 조건 (중앙 고온부가 빠지는 현상 방지)
+                mask_rgb_red = cv2.bitwise_and(
+                    cv2.inRange(r - g, 20, 255),
+                    cv2.inRange(r - b, 20, 255)
+                )
+                # C) LAB 적색도 및 빛반사(고명도)
+                _, mask_lab_a = cv2.threshold(a_chan, 140, 255, cv2.THRESH_BINARY)
+                _, mask_glare = cv2.threshold(l_chan, 235, 255, cv2.THRESH_BINARY)
+
+                full_fill_mask = cv2.bitwise_or(cv2.bitwise_or(mask_r1, mask_r2), mask_rgb_red)
+                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_lab_a)
                 full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_glare)
 
-                # 2. 경계 영역 (가중치 0.45): 주황색~진한 노란색 (초록 배경 전면 제외)
-                # Hue 범위: 10 ~ 28 (연두/초록 완전히 배제)
-                mask_orange_hsv = cv2.inRange(hsv, np.array([10, 120, 130]), np.array([28, 255, 255]))
+                # 2. 경계 영역 (가중치 0.45): pure Orange ~ Warm Yellow (초록/연두 완벽 차단)
+                # Hue 범위: 12 ~ 22 로 정밀 축소
+                mask_orange_hsv = cv2.inRange(hsv, np.array([12, 100, 120]), np.array([22, 255, 255]))
                 
-                # 완전 충진 부위와 겹치는 영역 제거
+                # 완전 충진 부위 제외
                 boundary_mask = cv2.bitwise_and(mask_orange_hsv, cv2.bitwise_not(full_fill_mask))
 
-                # 3. 노이즈 필터링 (Morphology)
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel)
-                boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel)
+                # 3. 구멍 메우기 및 노이즈 정화 (Morphology)
+                kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                
+                # 고온 줄기 내부 채우기 (Close 연산)
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel_close)
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel_open)
+                
+                boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel_open)
 
-                # 4. 충진율 가중치 계산
+                # 4. 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 p_full = np.count_nonzero(full_fill_mask == 255)
                 p_boundary = np.count_nonzero(boundary_mask == 255)
