@@ -65,7 +65,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>스마트 클러스터링 및 명암 기반 적응형 진단 솔루션</p>
+        <p>Green/Yellow 색상 마스킹 및 가중치(0.74) 기반 정밀 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -147,48 +147,49 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [스마트 클러스터링 기반 적응형 진단 알고리즘]
+                # 📌 [제공해주신 100% 동일한 기존 알고리즘 로직]
                 # =========================================================
-                gray = cv2.cvtColor(warped_img, cv2.COLOR_BGR2GRAY)
-                hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+                blurred = cv2.GaussianBlur(warped_img, (5, 5), 0)
+                hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
                 
-                # 1. 배경(초록/어두운 바닥)과 열화상 신호 분리를 위한 오직 밝기/채도 분석
-                # 열화상에서 온도가 높은 부위(충진부)는 밝기(Value)와 특정 색상 채도가 높거나 뚜렷한 특징을 가짐.
-                # Otsu 이진화와 채도 분석을 결합하여 자동으로 유효 열화상 영역 추출
-                blur = cv2.GaussianBlur(gray, (5, 5), 0)
+                MIN_SAT_VAL = 5
                 
-                # 채도(Saturation) 채널 활용 (열화상 고온 부위는 채도가 높거나 명도가 뚜렷함)
-                s_chan = hsv[:, :, 1]
-                v_chan = hsv[:, :, 2]
+                # Green 영역
+                lower_green = np.array([30, MIN_SAT_VAL, MIN_SAT_VAL])
+                upper_green = np.array([95, 255, 255])
+                mask_green = cv2.inRange(hsv, lower_green, upper_green)
                 
-                # 다중 피처 결합 스코어 (명도 + 채도 조합)
-                thermal_map = cv2.addWeighted(v_chan, 0.5, s_chan, 0.5, 0)
-                
-                # Otsu 알고리즘을 적용해 이미지 자체의 특성에 맞춰 자동 임계값 설정 (사진마다 다른 스케일에 대응)
-                _, thresh_otsu = cv2.threshold(thermal_map, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                
-                # 초록색 배경(공극) 성분 강한 픽셀 정밀 필터링
-                b_c, g_c, r_c = cv2.split(warped_img)
-                is_green_bg = (g_c.astype(np.int16) > r_c.astype(np.int16) + 15) & (g_c.astype(np.int16) > 100)
-                
-                # 최종 충진 마스크 생성 (기본 오츠 영역에서 명백한 초록 배경 제외)
-                full_fill_mask = thresh_otsu.copy()
-                full_fill_mask[is_green_bg] = 0
+                # Yellow 영역
+                lower_yellow = np.array([11, MIN_SAT_VAL, MIN_SAT_VAL])
+                upper_yellow = np.array([29, 255, 255])
+                mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
 
-                # 2. 노이즈 제거 및 빈 곳 메우기 (모폴로지 연산)
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel)
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+                # 모폴로지 연산
+                kernel = np.ones((5, 5), np.uint8)
+                mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_CLOSE, kernel)
+                mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_CLOSE, kernel)
 
-                # 3. 최종 충진율 계산
-                total_pixels = TARGET_W * TARGET_H
-                p_full = np.count_nonzero(full_fill_mask == 255)
+                # 전체 타일 영역 계산
+                tile_mask = cv2.inRange(hsv, np.array([0, 10, 10]), np.array([180, 255, 255]))
                 
-                # 약간의 경계 가중치를 부여하여 자연스러운 채점 보정 (전체의 85% 반영 + 경계 부근 스무딩)
-                final_ratio = (p_full / total_pixels) * 100.0
+                green_pixels = np.sum(mask_green == 255)
+                yellow_pixels = np.sum(mask_yellow == 255)
+                tile_pixels = np.sum(tile_mask == 255)
+                
+                if tile_pixels == 0:
+                    tile_pixels = TARGET_W * TARGET_H
 
-                # 4. 진단 마스크 시각화 (완전충진: 흰색 255, 공극: 검은색 0)
-                display_mask_bgr = cv2.cvtColor(full_fill_mask, cv2.COLOR_GRAY2BGR)
+                # 가중치 계산 (Green: 1.0, Yellow: 0.74)
+                WEIGHT_YELLOW = 0.74
+                weighted_filled_pixels = (green_pixels * 1.0) + (yellow_pixels * WEIGHT_YELLOW)
+                final_ratio = (weighted_filled_pixels / tile_pixels) * 100.0
+
+                # 시각화 (Green: 흰색 255, Yellow: 회색 180)
+                display_img = np.zeros_like(mask_green)
+                display_img[mask_green == 255] = 255
+                display_img[mask_yellow == 255] = 180
+                
+                display_mask_bgr = cv2.cvtColor(display_img, cv2.COLOR_GRAY2BGR)
 
                 with col2:
                     st.markdown("##### 2. 정면 보정")
@@ -200,9 +201,9 @@ if uploaded_file is not None:
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%** (충진 영역 감지율)")
+                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%** (Green: {(green_pixels/tile_pixels)*100:.1f}%, Yellow가중: {(yellow_pixels*WEIGHT_YELLOW/tile_pixels)*100:.1f}%)")
                 else:
-                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%** (충진 영역 감지율)")
+                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%** (Green: {(green_pixels/tile_pixels)*100:.1f}%, Yellow가중: {(yellow_pixels*WEIGHT_YELLOW/tile_pixels)*100:.1f}%)")
 
                 now = datetime.now()
                 new_record = {
