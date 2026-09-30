@@ -50,7 +50,7 @@ st.markdown("""
             margin-bottom: 0.8rem !important;
         }
         h3, .stSubheader { font-size: 1.6rem !important; font-weight: 800 !important; }
-        [data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
+        [data-testid="sidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
         [data-testid="column"] { background: #ffffff; padding: 1.2rem; border-radius: 12px; border: 1px solid #cbd5e1; }
     </style>
 """, unsafe_allow_html=True)
@@ -65,7 +65,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>적응형 색상 히스토그램 및 가중치 이진화 진단 솔루션</p>
+        <p>열화상 스펙트럼 기반 정밀 이진화 및 가중치 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -147,48 +147,44 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [적응형 히스토그램 기반 상대분할 정밀 알고리즘]
+                # 📌 [절대 스펙트럼 정밀 충진 분석 알고리즘]
                 # =========================================================
-                lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                
-                l_chan, a_chan, b_chan = cv2.split(lab)
-                b_val, g_val, r_val = cv2.split(warped_img)
+                lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
+                b_chan, g_chan, r_chan = cv2.split(warped_img.astype(np.int16))
+                l_lab, a_lab, b_lab = cv2.split(lab)
 
-                # 열 스펙트럼 지표 (Red intensity + LAB A-channel 적색 성분)
-                heat_score = r_val.astype(np.float32) * 0.6 + a_chan.astype(np.float32) * 0.4
+                # 1. 완전 충진 (가중치 1.0): 붉은색, 자홍색, 마젠타, 고온 빛반사
+                # A) Red 성분이 Green/Blue보다 명확히 큰 영역
+                mask_red_dom = np.uint8((r_chan - g_chan > 35) & (r_chan - b_chan > 20)) * 255
+                # B) HSV Red/Pink 범위
+                mask_hsv_r1 = cv2.inRange(hsv, np.array([0, 60, 80]), np.array([9, 255, 255]))
+                mask_hsv_r2 = cv2.inRange(hsv, np.array([160, 60, 80]), np.array([180, 255, 255]))
+                # C) LAB 적색도 강한 구역 및 흰색 포화빛반사
+                _, mask_lab_a = cv2.threshold(a_lab, 142, 255, cv2.THRESH_BINARY)
+                _, mask_glare = cv2.threshold(l_lab, 235, 255, cv2.THRESH_BINARY)
 
-                # 1. 고온 핵심 영역 (완전 충진, 가중치 1.0)
-                # 상대적 상위 열강도 영역 + HSV 붉은색 결합
-                heat_thresh = np.percentile(heat_score, 62)  # 상위 38% 수준을 적응형 임계값 지정
-                mask_heat_high = np.uint8(heat_score >= heat_thresh) * 255
-
-                # HSV 붉은색/빛반사 보정
-                mask_r1 = cv2.inRange(hsv, np.array([0, 40, 60]), np.array([15, 255, 255]))
-                mask_r2 = cv2.inRange(hsv, np.array([160, 40, 60]), np.array([180, 255, 255]))
-                mask_glare = cv2.inRange(l_chan, 230, 255)
-
-                full_fill_mask = cv2.bitwise_or(mask_heat_high, cv2.bitwise_or(mask_r1, mask_r2))
+                full_fill_mask = cv2.bitwise_or(mask_red_dom, mask_hsv_r1)
+                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_hsv_r2)
+                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_lab_a)
                 full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_glare)
 
-                # 2. 경계 영역 (주황~노랑, 가중치 0.45)
-                # 열 강도가 중간 수준인 부분 (상위 38% ~ 62% 영역)
-                boundary_thresh_low = np.percentile(heat_score, 40)
-                mask_mid_heat = np.uint8((heat_score >= boundary_thresh_low) & (heat_score < heat_thresh)) * 255
-
-                # 초록색 배경(저온) 완벽 제외 (Green 성분이 Red보다 큰 영역은 공극으로 차단)
-                not_green = np.uint8(r_val >= (g_val * 0.85)) * 255
+                # 2. 경계 영역 (가중치 0.45): 주황색~노란색 (초록/연두 철저히 제외)
+                # Hue 범위: 10 ~ 24 (순수 주황/황색대)
+                mask_orange_hsv = cv2.inRange(hsv, np.array([10, 80, 100]), np.array([24, 255, 255]))
+                # Red가 Blue보다 확연히 높은 조건 (바탕 차단)
+                mask_orange_rgb = np.uint8((r_chan - b_chan > 25) & (r_chan >= g_chan - 10)) * 255
                 
-                boundary_mask = cv2.bitwise_and(mask_mid_heat, not_green)
+                boundary_mask = cv2.bitwise_and(mask_orange_hsv, mask_orange_rgb)
                 boundary_mask = cv2.bitwise_and(boundary_mask, cv2.bitwise_not(full_fill_mask))
 
-                # 3. 노이즈 제거 및 모폴로지 보정
-                kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-                kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                # 3. 구멍 메우기 및 외곽 잡음 정화 (Morphology)
+                kernel_fill = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel_close)
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel_open)
-                boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel_open)
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel_fill)
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel_clean)
+                boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel_clean)
 
                 # 4. 최종 가중치 계산
                 total_pixels = TARGET_W * TARGET_H
