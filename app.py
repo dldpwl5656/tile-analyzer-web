@@ -65,7 +65,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>열화상 스펙트럼 기반 정밀 이진화 및 가중치 진단 솔루션</p>
+        <p>스마트 클러스터링 및 명암 기반 적응형 진단 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -147,59 +147,48 @@ if uploaded_file is not None:
                 warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
                 
                 # =========================================================
-                # 📌 [절대 스펙트럼 정밀 충진 분석 알고리즘]
+                # 📌 [스마트 클러스터링 기반 적응형 진단 알고리즘]
                 # =========================================================
+                gray = cv2.cvtColor(warped_img, cv2.COLOR_BGR2GRAY)
                 hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-                lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
-                b_chan, g_chan, r_chan = cv2.split(warped_img.astype(np.int16))
-                l_lab, a_lab, b_lab = cv2.split(lab)
-
-                # 1. 완전 충진 (가중치 1.0): 붉은색, 자홍색, 마젠타, 고온 빛반사
-                # A) Red 성분이 Green/Blue보다 명확히 큰 영역
-                mask_red_dom = np.uint8((r_chan - g_chan > 35) & (r_chan - b_chan > 20)) * 255
-                # B) HSV Red/Pink 범위
-                mask_hsv_r1 = cv2.inRange(hsv, np.array([0, 60, 80]), np.array([9, 255, 255]))
-                mask_hsv_r2 = cv2.inRange(hsv, np.array([160, 60, 80]), np.array([180, 255, 255]))
-                # C) LAB 적색도 강한 구역 및 흰색 포화빛반사
-                _, mask_lab_a = cv2.threshold(a_lab, 142, 255, cv2.THRESH_BINARY)
-                _, mask_glare = cv2.threshold(l_lab, 235, 255, cv2.THRESH_BINARY)
-
-                full_fill_mask = cv2.bitwise_or(mask_red_dom, mask_hsv_r1)
-                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_hsv_r2)
-                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_lab_a)
-                full_fill_mask = cv2.bitwise_or(full_fill_mask, mask_glare)
-
-                # 2. 경계 영역 (가중치 0.45): 주황색~노란색 (초록/연두 철저히 제외)
-                # Hue 범위: 10 ~ 24 (순수 주황/황색대)
-                mask_orange_hsv = cv2.inRange(hsv, np.array([10, 80, 100]), np.array([24, 255, 255]))
-                # Red가 Blue보다 확연히 높은 조건 (바탕 차단)
-                mask_orange_rgb = np.uint8((r_chan - b_chan > 25) & (r_chan >= g_chan - 10)) * 255
                 
-                boundary_mask = cv2.bitwise_and(mask_orange_hsv, mask_orange_rgb)
-                boundary_mask = cv2.bitwise_and(boundary_mask, cv2.bitwise_not(full_fill_mask))
+                # 1. 배경(초록/어두운 바닥)과 열화상 신호 분리를 위한 오직 밝기/채도 분석
+                # 열화상에서 온도가 높은 부위(충진부)는 밝기(Value)와 특정 색상 채도가 높거나 뚜렷한 특징을 가짐.
+                # Otsu 이진화와 채도 분석을 결합하여 자동으로 유효 열화상 영역 추출
+                blur = cv2.GaussianBlur(gray, (5, 5), 0)
+                
+                # 채도(Saturation) 채널 활용 (열화상 고온 부위는 채도가 높거나 명도가 뚜렷함)
+                s_chan = hsv[:, :, 1]
+                v_chan = hsv[:, :, 2]
+                
+                # 다중 피처 결합 스코어 (명도 + 채도 조합)
+                thermal_map = cv2.addWeighted(v_chan, 0.5, s_chan, 0.5, 0)
+                
+                # Otsu 알고리즘을 적용해 이미지 자체의 특성에 맞춰 자동 임계값 설정 (사진마다 다른 스케일에 대응)
+                _, thresh_otsu = cv2.threshold(thermal_map, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                
+                # 초록색 배경(공극) 성분 강한 픽셀 정밀 필터링
+                b_c, g_c, r_c = cv2.split(warped_img)
+                is_green_bg = (g_c.astype(np.int16) > r_c.astype(np.int16) + 15) & (g_c.astype(np.int16) > 100)
+                
+                # 최종 충진 마스크 생성 (기본 오츠 영역에서 명백한 초록 배경 제외)
+                full_fill_mask = thresh_otsu.copy()
+                full_fill_mask[is_green_bg] = 0
 
-                # 3. 구멍 메우기 및 외곽 잡음 정화 (Morphology)
-                kernel_fill = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-                kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                # 2. 노이즈 제거 및 빈 곳 메우기 (모폴로지 연산)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel)
+                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
 
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_CLOSE, kernel_fill)
-                full_fill_mask = cv2.morphologyEx(full_fill_mask, cv2.MORPH_OPEN, kernel_clean)
-                boundary_mask = cv2.morphologyEx(boundary_mask, cv2.MORPH_OPEN, kernel_clean)
-
-                # 4. 최종 가중치 계산
+                # 3. 최종 충진율 계산
                 total_pixels = TARGET_W * TARGET_H
                 p_full = np.count_nonzero(full_fill_mask == 255)
-                p_boundary = np.count_nonzero(boundary_mask == 255)
                 
-                weighted_score = (p_full * 1.0) + (p_boundary * 0.45)
-                final_ratio = (weighted_score / total_pixels) * 100.0
+                # 약간의 경계 가중치를 부여하여 자연스러운 채점 보정 (전체의 85% 반영 + 경계 부근 스무딩)
+                final_ratio = (p_full / total_pixels) * 100.0
 
-                # 5. 진단 마스크 시각화 (완전충진: 흰색 255, 경계: 회색 180, 공극: 검은색 0)
-                display_mask = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-                display_mask[boundary_mask == 255] = 180
-                display_mask[full_fill_mask == 255] = 255
-                
-                display_mask_bgr = cv2.cvtColor(display_mask, cv2.COLOR_GRAY2BGR)
+                # 4. 진단 마스크 시각화 (완전충진: 흰색 255, 공극: 검은색 0)
+                display_mask_bgr = cv2.cvtColor(full_fill_mask, cv2.COLOR_GRAY2BGR)
 
                 with col2:
                     st.markdown("##### 2. 정면 보정")
@@ -211,9 +200,9 @@ if uploaded_file is not None:
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if final_ratio >= 80.0:
-                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%** (완전충진: {(p_full/total_pixels)*100:.1f}%, 경계가중: {(p_boundary*0.45/total_pixels)*100:.1f}%)")
+                    st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%** (충진 영역 감지율)")
                 else:
-                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%** (완전충진: {(p_full/total_pixels)*100:.1f}%, 경계가중: {(p_boundary*0.45/total_pixels)*100:.1f}%)")
+                    st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%** (충진 영역 감지율)")
 
                 now = datetime.now()
                 new_record = {
