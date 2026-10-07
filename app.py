@@ -115,7 +115,7 @@ if uploaded_file is not None:
     if full_img is None:
         st.error("❌ 이미지를 불러올 수 없습니다.")
     else:
-        orig_img = full_img
+        orig_img = full_img.copy()
         img_h, img_w = orig_img.shape[:2]
         
         st.markdown('<div class="sub-instruction">1단계: <b>RGB 타일 영역 4개 모서리 클릭</b> (1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하)</div>', unsafe_allow_html=True)
@@ -133,38 +133,4 @@ if uploaded_file is not None:
         
         draw_img = np.array(pil_image).copy()
         for i, p in enumerate(st.session_state.pts):
-            cv2.circle(draw_img, (p[0], p[1]), 8, (255, 255, 255), -1)
-            cv2.circle(draw_img, (p[0], p[1]), 6, (239, 68, 68), -1)
-            cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-            cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
-
-        col1, col2, col3 = st.columns([1, 1, 1])
-        
-        with col1:
-            st.markdown('<div class="panel-header">1. 영역 지정 (모서리 4곳)</div>', unsafe_allow_html=True)
-            value = streamlit_image_coordinates(
-                Image.fromarray(draw_img),
-                key=f"mobile_coord_{st.session_state.coord_key}"
-            )
-
-            if value is not None:
-                point = [value["x"], value["y"]]
-                if len(st.session_state.pts) < 4 and point not in st.session_state.pts:
-                    st.session_state.pts.append(point)
-                    st.rerun()
-
-            st.write(f"📍 모서리 좌표 선택: **{len(st.session_state.pts)} / 4**")
-            
-            if st.button("🔄 영역 다시 잡기", use_container_width=True):
-                st.session_state.pts = []
-                st.session_state.sample_pts = []
-                st.session_state.coord_key += 1
-                st.rerun()
-
-        # 모서리 4개가 모두 지정되었을 때 정면 보정 수행
-        if len(st.session_state.pts) == 4:
-            TARGET_W = 600
-            TARGET_H = 300
-
-            clicked_pts = []
-            x_scale = img
+            cv2.circle(draw_img, (
