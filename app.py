@@ -99,10 +99,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 📌 사이드바
+# 📌 사이드바 설정 (이진화 보정 컨트롤러 추가)
 # ---------------------------------------------------------
 st.sidebar.header("📁 이미지 업로드")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
+
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ 이진화 세부 조절")
+use_custom_thresh = st.sidebar.checkbox("임계값 수동 조절 사용", value=False, help="Otsu 자동 결과가 오차가 클 때 직접 조절합니다.")
+
+custom_thresh_val = 128
+if use_custom_thresh:
+    custom_thresh_val = st.sidebar.slider("충진 영역 밝기 기준값", 0, 255, 130, step=1)
+
+invert_mask = st.sidebar.checkbox("이진화 반전 (흰색/검은색 반전)", value=False, help="충진 영역과 공복 영역 색상이 반대로 나올 때 체크하세요.")
 
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -179,14 +189,24 @@ if uploaded_file is not None:
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
             # ---------------------------------------------------------
-            # 🔬 LAB (B-Channel) + Otsu Thresholding (원래 알고리즘)
+            # 🔬 이진화 보정 처리 (LAB B-Channel + 수동/자동 선택)
             # ---------------------------------------------------------
             lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
             _, _, b_channel = cv2.split(lab)
-            
             filtered = cv2.bilateralFilter(b_channel, 9, 75, 75)
-            _, binary_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
+            if use_custom_thresh:
+                # 사용자가 지정한 슬라이더 기준값 적용
+                _, binary_mask = cv2.threshold(filtered, custom_thresh_val, 255, cv2.THRESH_BINARY)
+            else:
+                # Otsu 자동 분석 적용
+                _, binary_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # 반전 옵션 체크 시 처리
+            if invert_mask:
+                binary_mask = cv2.bitwise_not(binary_mask)
+
+            # 노이즈 제거 (모폴로지)
             kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             
@@ -224,9 +244,10 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
+            algo_text = f"Custom Thresholding (Val: {custom_thresh_val})" if use_custom_thresh else "Otsu Automatic Thresholding"
             st.markdown(f"""
             <div class="info-card-box">
-                🔬 <b>이진화 분석 알고리즘:</b> Otsu Automatic Thresholding (LAB B-Channel)<br>
+                🔬 <b>이진화 분석 알고리즘:</b> {algo_text} (LAB B-Channel)<br>
                 💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({final_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-final_ratio:.1f}%)</b>
             </div>
             """, unsafe_allow_html=True)
