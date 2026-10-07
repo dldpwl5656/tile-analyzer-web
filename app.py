@@ -162,6 +162,9 @@ if uploaded_file is not None:
                 run_btn = st.button("🚀 분석 실행", disabled=(len(st.session_state.pts) != 4), type="primary", use_container_width=True)
 
         if run_btn and len(st.session_state.pts) == 4:
+            TARGET_W = 600
+            TARGET_H = 300
+
             clicked_pts = []
             x_scale = img_w / canvas_w
             y_scale = img_h / canvas_h
@@ -169,4 +172,56 @@ if uploaded_file is not None:
                 clicked_pts.append([int(pt[0] * x_scale), int(pt[1] * y_scale)])
 
             src_pts = np.float32(clicked_pts)
-            TARGET_W, TARGET_H = 600
+            dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
+            
+            matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
+            warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
+            warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
+            
+            # ---------------------------------------------------------
+            # 🔬 정밀 이진화 (Otsu Thresholding & LAB/B-Channel)
+            # ---------------------------------------------------------
+            lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
+            _, _, b_channel = cv2.split(lab)
+            
+            filtered = cv2.bilateralFilter(b_channel, 9, 75, 75)
+            _, binary_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            
+            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel_close)
+            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel_open)
+            
+            total_pixels = TARGET_W * TARGET_H
+            filled_pixels = int(np.sum(binary_mask == 255))
+            void_pixels = int(total_pixels - filled_pixels)
+
+            raw_ratio = (filled_pixels / total_pixels) * 100.0
+            
+            SCALE_FACTOR = 1.0
+            final_ratio = min(raw_ratio * SCALE_FACTOR, 100.0)
+
+            binary_display = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2RGB)
+
+            with col2:
+                st.markdown('<div class="panel-header">2. 정면 보정 (RGB)</div>', unsafe_allow_html=True)
+                st.image(warped_rgb, use_container_width=True)
+            
+            with col3:
+                st.markdown('<div class="panel-header">3. 정밀 이진화 마스크</div>', unsafe_allow_html=True)
+                st.image(binary_display, use_container_width=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ---------------------------------------------------------
+            # 📊 하단 결과 출력
+            # ---------------------------------------------------------
+            if final_ratio >= 80.0:
+                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 정밀 이진화 충진율: **{final_ratio:.2f}%**")
+            else:
+                st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 정밀 이진화 충진율: **{final_ratio:.2f}%**")
+                st.markdown("""
+                **[현장 조치 지침]**
+                * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
+                * **
