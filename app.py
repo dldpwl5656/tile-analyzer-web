@@ -93,26 +93,16 @@ if "coord_key" not in st.session_state:
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (K-Means Auto)</h1>
         <p>열화상 이미지를 이용한 타일 뒷채움 비파괴검사</p>
     </div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 📌 사이드바 설정 (이진화 보정 컨트롤러 추가)
+# 📌 사이드바
 # ---------------------------------------------------------
 st.sidebar.header("📁 이미지 업로드")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
-
-st.sidebar.markdown("---")
-st.sidebar.header("⚙️ 이진화 세부 조절")
-use_custom_thresh = st.sidebar.checkbox("임계값 수동 조절 사용", value=False, help="Otsu 자동 결과가 오차가 클 때 직접 조절합니다.")
-
-custom_thresh_val = 128
-if use_custom_thresh:
-    custom_thresh_val = st.sidebar.slider("충진 영역 밝기 기준값", 0, 255, 130, step=1)
-
-invert_mask = st.sidebar.checkbox("이진화 반전 (흰색/검은색 반전)", value=False, help="충진 영역과 공복 영역 색상이 반대로 나올 때 체크하세요.")
 
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -189,24 +179,28 @@ if uploaded_file is not None:
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
             # ---------------------------------------------------------
-            # 🔬 이진화 보정 처리 (LAB B-Channel + 수동/자동 선택)
+            # 🔬 완전 자동 K-Means 군집화 기반 정밀 이진화 (수동 조절 X)
             # ---------------------------------------------------------
+            # LAB B-channel 변환 및 필터링
             lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
             _, _, b_channel = cv2.split(lab)
             filtered = cv2.bilateralFilter(b_channel, 9, 75, 75)
             
-            if use_custom_thresh:
-                # 사용자가 지정한 슬라이더 기준값 적용
-                _, binary_mask = cv2.threshold(filtered, custom_thresh_val, 255, cv2.THRESH_BINARY)
-            else:
-                # Otsu 자동 분석 적용
-                _, binary_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # K-Means 클러스터링 (k=2: 충진 / 미충진 자동 구분)
+            pixel_vals = filtered.reshape((-1, 1)).astype(np.float32)
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+            _, labels, centers = cv2.kmeans(pixel_vals, 2, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
             
-            # 반전 옵션 체크 시 처리
-            if invert_mask:
-                binary_mask = cv2.bitwise_not(binary_mask)
-
-            # 노이즈 제거 (모폴로지)
+            # 더 높은 밝기 값을 가진 군집을 충진(1) 영역으로 설정
+            if centers[0] > centers[1]:
+                filled_cluster = 0
+            else:
+                filled_cluster = 1
+                
+            binary_mask = (labels == filled_cluster).astype(np.uint8) * 255
+            binary_mask = binary_mask.reshape((TARGET_H, TARGET_W))
+            
+            # 노이즈 제거
             kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             
@@ -244,10 +238,9 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
-            algo_text = f"Custom Thresholding (Val: {custom_thresh_val})" if use_custom_thresh else "Otsu Automatic Thresholding"
             st.markdown(f"""
             <div class="info-card-box">
-                🔬 <b>이진화 분석 알고리즘:</b> {algo_text} (LAB B-Channel)<br>
+                🔬 <b>이진화 분석 알고리즘:</b> Automatic K-Means Color Segmentation (LAB B-Channel)<br>
                 💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({final_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-final_ratio:.1f}%)</b>
             </div>
             """, unsafe_allow_html=True)
