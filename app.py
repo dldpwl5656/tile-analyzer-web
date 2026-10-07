@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 🎨 전면 레이아웃 오와열 정돈 CSS Custom
+# 🎨 레이아웃 CSS Custom
 # ---------------------------------------------------------
 st.markdown("""
     <style>
@@ -25,7 +25,6 @@ st.markdown("""
             max-width: 96% !important; 
         }
         
-        /* 상단 메인 타이틀 카드 */
         .title-card {
             background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
             padding: 1.2rem 2rem;
@@ -36,7 +35,6 @@ st.markdown("""
         .title-card h1 { color: #ffffff !important; font-size: 2.0rem !important; font-weight: 800 !important; margin: 0 !important; }
         .title-card p { color: #dbeafe !important; font-size: 1.05rem !important; margin-top: 0.3rem !important; margin-bottom: 0 !important; }
         
-        /* 안내 바 */
         .sub-instruction {
             background-color: #ffffff;
             padding: 0.8rem 1.2rem;
@@ -49,7 +47,6 @@ st.markdown("""
             box-shadow: 0 2px 4px rgba(0,0,0,0.03);
         }
         
-        /* 공통 헤더 5번 (각 패널 제목) */
         .panel-header {
             font-size: 1.25rem !important;
             font-weight: 800 !important;
@@ -60,7 +57,6 @@ st.markdown("""
             align-items: center;
         }
         
-        /* 컬럼 박스 통일 */
         [data-testid="column"] { 
             background: #ffffff; 
             padding: 1.2rem; 
@@ -71,7 +67,6 @@ st.markdown("""
             flex-direction: column;
         }
         
-        /* 버튼 스타일 */
         .stButton>button {
             font-size: 1.1rem !important;
             font-weight: 700 !important;
@@ -79,7 +74,6 @@ st.markdown("""
             height: 2.8rem !important;
         }
 
-        /* 캡션 텍스트 박스 높이 맞춤 */
         .info-card-box {
             background-color: #f1f5f9;
             padding: 0.8rem 1rem;
@@ -99,13 +93,13 @@ if "coord_key" not in st.session_state:
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (정밀 이진화)</h1>
         <p>열화상 이미지를 이용한 타일 뒷채움 비파괴검사</p>
     </div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 📌 사이드바: 사진 업로드
+# 📌 사이드바
 # ---------------------------------------------------------
 st.sidebar.header("📁 이미지 업로드")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
@@ -122,7 +116,6 @@ if uploaded_file is not None:
         
         st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
         
-        # 패널 규격 통일용 Canvas W/H 설정
         MAX_W = 400
         if img_w > MAX_W:
             canvas_w = MAX_W
@@ -141,7 +134,6 @@ if uploaded_file is not None:
             cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
             cv2.putText(draw_img, str(i+1), (p[0]+12, p[1]+6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
 
-        # 3컬럼 정밀 1:1:1 레이아웃
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
@@ -159,7 +151,6 @@ if uploaded_file is not None:
 
             st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
             
-            # 하단 버튼 열 1:1 세분화
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
                 if st.button("🔄 리셋", use_container_width=True):
@@ -178,139 +169,4 @@ if uploaded_file is not None:
                 clicked_pts.append([int(pt[0] * x_scale), int(pt[1] * y_scale)])
 
             src_pts = np.float32(clicked_pts)
-            TARGET_W, TARGET_H = 600, 300
-            dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
-            
-            matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-            warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
-            warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
-            
-            # 이미지 전처리
-            blurred_img = cv2.GaussianBlur(warped_img, (5, 5), 0)
-            hsv = cv2.cvtColor(blurred_img, cv2.COLOR_BGR2HSV)
-            
-            # HSV 마스크 검출
-            lower_green = np.array([35, 30, 30])
-            upper_green = np.array([85, 255, 255])
-            mask_green = cv2.inRange(hsv, lower_green, upper_green)
-
-            lower_yellow = np.array([15, 30, 30])
-            upper_yellow = np.array([34, 255, 255])
-            mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
-
-            lower_red1 = np.array([0, 30, 30])
-            upper_red1 = np.array([14, 255, 255])
-            lower_red2 = np.array([170, 30, 30])
-            upper_red2 = np.array([180, 255, 255])
-            mask_red1 = cv2.inRange(hsv, lower_red1, upper_red1)
-            mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
-            mask_red = cv2.bitwise_or(mask_red1, mask_red2)
-
-            # 모폴로지 연산
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_CLOSE, kernel)
-            mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_CLOSE, kernel)
-            mask_red = cv2.morphologyEx(mask_red, cv2.MORPH_CLOSE, kernel)
-            
-            # 충진율 연산
-            total_pixels = TARGET_W * TARGET_H
-            green_pixels = np.sum(mask_green == 255)
-            yellow_pixels = np.sum(mask_yellow == 255)
-            red_pixels = np.sum(mask_red == 255)
-
-            green_pct = (green_pixels / total_pixels) * 100.0
-            yellow_pct = (yellow_pixels / total_pixels) * 100.0
-            red_pct = (red_pixels / total_pixels) * 100.0
-
-            if yellow_pixels >= green_pixels:
-                yellow_weight = 1.0
-                base_calc = (green_pct * 1.0) + (yellow_pct * yellow_weight)
-                mode_desc = "노란색 우세 패턴 (노랑+초록 영역 완전 충진 판단)"
-            else:
-                yellow_weight = 0.85
-                base_calc = (green_pct * 1.0) + (yellow_pct * yellow_weight)
-                mode_desc = "초록색 우세 패턴 (초록 100%, 노랑 85% 보정 적용)"
-
-            SCALE_FACTOR = 1.189
-            calculated_ratio = base_calc * SCALE_FACTOR
-            final_ratio = min(calculated_ratio, 100.0)
-
-            # 무채색 진단 마스크 시각화
-            display_mask = np.full((TARGET_H, TARGET_W, 3), 40, dtype=np.uint8)
-            display_mask[mask_yellow == 255] = [180, 180, 180]
-            display_mask[mask_green == 255] = [255, 255, 255]
-            display_mask[mask_red == 255] = [15, 15, 15]
-
-            with col2:
-                st.markdown('<div class="panel-header">2. 정면 보정</div>', unsafe_allow_html=True)
-                st.image(warped_rgb, use_container_width=True)
-            
-            with col3:
-                st.markdown('<div class="panel-header">3. 무채색 진단 마스크</div>', unsafe_allow_html=True)
-                st.image(display_mask, use_container_width=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # ---------------------------------------------------------
-            # 📊 하단 결과 및 지침 출력 패널
-            # ---------------------------------------------------------
-            if final_ratio >= 80.0:
-                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 충진율: **{final_ratio:.2f}%**")
-            else:
-                st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 충진율: **{final_ratio:.2f}%**")
-                st.markdown("""
-                **[현장 조치 지침]**
-                * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
-                * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
-                """)
-
-            st.markdown(f"""
-            <div class="info-card-box">
-                ⚙️ <b>분석 모드:</b> {mode_desc} (비례 보정율 1.189x 반영)<br>
-                💡 <b>구역별 분포:</b> 완전 충진 영역(흰색): <b>{green_pct:.1f}%</b> | 일반 충진 영역(회색): <b>{yellow_pct:.1f}%</b> | 미충진/공복(어두움): <b>{red_pct:.1f}%</b>
-            </div>
-            """, unsafe_allow_html=True)
-
-            now = datetime.now()
-            new_record = {
-                "사진 이름": uploaded_file.name,
-                "시간": now.strftime("%H:%M:%S"),
-                "최종 충진율": f"{final_ratio:.2f}%",
-                "흰색 영역": f"{green_pct:.1f}%",
-                "회색 영역": f"{yellow_pct:.1f}%",
-                "미충진 영역": f"{red_pct:.1f}%"
-            }
-            
-            if not st.session_state.history or st.session_state.history[0]["시간"] != new_record["시간"]:
-                st.session_state.history.insert(0, new_record)
-
-        else:
-            with col2:
-                st.markdown('<div class="panel-header">2. 정면 보정</div>', unsafe_allow_html=True)
-                st.info("4곳 터치 후 분석 버튼 클릭")
-            with col3:
-                st.markdown('<div class="panel-header">3. 무채색 진단 마스크</div>', unsafe_allow_html=True)
-                st.info("분석 대기 중")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
-            if st.session_state.history:
-                df = pd.DataFrame(st.session_state.history)
-                st.dataframe(df, use_container_width=True)
-                
-                col_exp1, col_exp2 = st.columns([1, 1])
-                with col_exp1:
-                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
-                with col_exp2:
-                    if st.button("🧹 이력 초기화", use_container_width=True):
-                        st.session_state.history = []
-                        st.session_state.pts = []
-                        st.session_state.coord_key += 1
-                        st.rerun()
-            else:
-                st.caption("저장된 이력이 없습니다.")
-
-else:
-    st.session_state.pts = []
-    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
+            TARGET_W, TARGET_H = 600
