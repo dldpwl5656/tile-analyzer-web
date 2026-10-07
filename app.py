@@ -42,13 +42,13 @@ st.markdown("""
             border-left: 5px solid #2563eb;
             font-weight: 700;
             color: #1e293b;
-            font-size: 1.15rem !important;
+            font-size: 1.1rem !important;
             margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.03);
         }
         
         .panel-header {
-            font-size: 1.25rem !important;
+            font-size: 1.2rem !important;
             font-weight: 800 !important;
             color: #1e293b !important;
             margin-bottom: 0.8rem !important;
@@ -88,13 +88,17 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "pts" not in st.session_state:
     st.session_state.pts = []
+if "sample_pts" not in st.session_state:
+    st.session_state.sample_pts = []
 if "coord_key" not in st.session_state:
     st.session_state.coord_key = 0
+if "sample_coord_key" not in st.session_state:
+    st.session_state.sample_coord_key = 100
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (HSV Absolute Color)</h1>
-        <p>절대적 색상 영역 기반 타일 뒷채움 비파괴검사 분석</p>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (Sample Calibration)</h1>
+        <p>색상 샘플링 기반 타일 뒷채움 비파괴검사 정밀 이진화</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -114,7 +118,7 @@ if uploaded_file is not None:
         orig_img = full_img
         img_h, img_w = orig_img.shape[:2]
         
-        st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-instruction">1단계: <b>RGB 타일 영역 4개 모서리 클릭</b> (1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하)</div>', unsafe_allow_html=True)
         
         MAX_W = 400
         if img_w > MAX_W:
@@ -137,7 +141,7 @@ if uploaded_file is not None:
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
-            st.markdown('<div class="panel-header">1. RGB 타일 (영역 지정)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-header">1. 영역 지정 (모서리 4곳)</div>', unsafe_allow_html=True)
             value = streamlit_image_coordinates(
                 Image.fromarray(draw_img),
                 key=f"mobile_coord_{st.session_state.coord_key}"
@@ -149,143 +153,18 @@ if uploaded_file is not None:
                     st.session_state.pts.append(point)
                     st.rerun()
 
-            st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
+            st.write(f"📍 모서리 좌표 선택: **{len(st.session_state.pts)} / 4**")
             
-            col_btn1, col_btn2 = st.columns([1, 1])
-            with col_btn1:
-                if st.button("🔄 리셋", use_container_width=True):
-                    st.session_state.pts = []
-                    st.session_state.coord_key += 1
-                    st.rerun()
-                    
-            with col_btn2:
-                run_btn = st.button("🚀 분석 실행", disabled=(len(st.session_state.pts) != 4), type="primary", use_container_width=True)
+            if st.button("🔄 영역 다시 잡기", use_container_width=True):
+                st.session_state.pts = []
+                st.session_state.sample_pts = []
+                st.session_state.coord_key += 1
+                st.rerun()
 
-        if run_btn and len(st.session_state.pts) == 4:
+        # 모서리 4개가 모두 지정되었을 때 정면 보정 수행
+        if len(st.session_state.pts) == 4:
             TARGET_W = 600
             TARGET_H = 300
 
             clicked_pts = []
-            x_scale = img_w / canvas_w
-            y_scale = img_h / canvas_h
-            for pt in st.session_state.pts:
-                clicked_pts.append([int(pt[0] * x_scale), int(pt[1] * y_scale)])
-
-            src_pts = np.float32(clicked_pts)
-            dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
-            
-            matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-            warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
-            warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
-            
-            # ---------------------------------------------------------
-            # 🔬 HSV 절대 색상 스펙트럼 기반 고온(충진) 영역 추출
-            # ---------------------------------------------------------
-            hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-            
-            # 1. 고온 영역 1: 빨강 ~ 주황 ~ 노란색 영역 (Hue: 0~35)
-            lower_warm1 = np.array([0, 80, 100])
-            upper_warm1 = np.array([35, 255, 255])
-            mask_warm1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
-
-            # 2. 고온 영역 2: 진한 빨간색 영역 (Hue: 165~180)
-            lower_warm2 = np.array([165, 80, 100])
-            upper_warm2 = np.array([180, 255, 255])
-            mask_warm2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
-
-            # 3. 최고온 영억: 흰색/극고온 (Saturation이 낮고 Value가 높은 밝은 영역)
-            lower_white = np.array([0, 0, 210])
-            upper_white = np.array([180, 60, 255])
-            mask_white = cv2.inRange(hsv, lower_white, upper_white)
-
-            # 충진 마스크 합치기 (고온/충진 영역만 255)
-            binary_mask = cv2.bitwise_or(mask_warm1, mask_warm2)
-            binary_mask = cv2.bitwise_or(binary_mask, mask_white)
-
-            # 노이즈 제거 (Morphology)
-            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-            
-            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel_close)
-            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel_open)
-            
-            total_pixels = TARGET_W * TARGET_H
-            filled_pixels = int(np.sum(binary_mask == 255))
-            void_pixels = int(total_pixels - filled_pixels)
-
-            final_ratio = (filled_pixels / total_pixels) * 100.0
-
-            binary_display = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2RGB)
-
-            with col2:
-                st.markdown('<div class="panel-header">2. 정면 보정 (RGB)</div>', unsafe_allow_html=True)
-                st.image(warped_rgb, use_container_width=True)
-            
-            with col3:
-                st.markdown('<div class="panel-header">3. 정밀 이진화 마스크</div>', unsafe_allow_html=True)
-                st.image(binary_display, use_container_width=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # ---------------------------------------------------------
-            # 📊 하단 결과 출력
-            # ---------------------------------------------------------
-            if final_ratio >= 80.0:
-                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 정밀 이진화 충진율: **{final_ratio:.2f}%**")
-            else:
-                st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 정밀 이진화 충진율: **{final_ratio:.2f}%**")
-                st.markdown("""
-                **[현장 조치 지침]**
-                * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
-                * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
-                """)
-
-            st.markdown(f"""
-            <div class="info-card-box">
-                🔬 <b>이진화 분석 알고리즘:</b> HSV Absolute Thermal Spectrum Filter<br>
-                💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({final_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-final_ratio:.1f}%)</b>
-            </div>
-            """, unsafe_allow_html=True)
-
-            now = datetime.now()
-            new_record = {
-                "사진 이름": uploaded_file.name,
-                "시간": now.strftime("%H:%M:%S"),
-                "최종 충진율": f"{final_ratio:.2f}%",
-                "충진 픽셀": f"{filled_pixels:,} px",
-                "공복 픽셀": f"{void_pixels:,} px"
-            }
-            
-            if not st.session_state.history or st.session_state.history[0]["시간"] != new_record["시간"]:
-                st.session_state.history.insert(0, new_record)
-
-        else:
-            with col2:
-                st.markdown('<div class="panel-header">2. 정면 보정 (RGB)</div>', unsafe_allow_html=True)
-                st.info("4곳 터치 후 분석 버튼 클릭")
-            with col3:
-                st.markdown('<div class="panel-header">3. 정밀 이진화 마스크</div>', unsafe_allow_html=True)
-                st.info("분석 대기 중")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
-            if st.session_state.history:
-                df = pd.DataFrame(st.session_state.history)
-                st.dataframe(df, use_container_width=True)
-                
-                col_exp1, col_exp2 = st.columns([1, 1])
-                with col_exp1:
-                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
-                with col_exp2:
-                    if st.button("🧹 이력 초기화", use_container_width=True):
-                        st.session_state.history = []
-                        st.session_state.pts = []
-                        st.session_state.coord_key += 1
-                        st.rerun()
-            else:
-                st.caption("저장된 이력이 없습니다.")
-
-else:
-    st.session_state.pts = []
-    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
+            x_scale = img
