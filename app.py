@@ -93,8 +93,8 @@ if "coord_key" not in st.session_state:
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (K-Means Auto)</h1>
-        <p>열화상 이미지를 이용한 타일 뒷채움 비파괴검사</p>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (HSV Absolute Color)</h1>
+        <p>절대적 색상 영역 기반 타일 뒷채움 비파괴검사 분석</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -179,28 +179,30 @@ if uploaded_file is not None:
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
             # ---------------------------------------------------------
-            # 🔬 완전 자동 K-Means 군집화 기반 정밀 이진화 (수동 조절 X)
+            # 🔬 HSV 절대 색상 스펙트럼 기반 고온(충진) 영역 추출
             # ---------------------------------------------------------
-            # LAB B-channel 변환 및 필터링
-            lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
-            _, _, b_channel = cv2.split(lab)
-            filtered = cv2.bilateralFilter(b_channel, 9, 75, 75)
+            hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
             
-            # K-Means 클러스터링 (k=2: 충진 / 미충진 자동 구분)
-            pixel_vals = filtered.reshape((-1, 1)).astype(np.float32)
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
-            _, labels, centers = cv2.kmeans(pixel_vals, 2, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-            
-            # 더 높은 밝기 값을 가진 군집을 충진(1) 영역으로 설정
-            if centers[0] > centers[1]:
-                filled_cluster = 0
-            else:
-                filled_cluster = 1
-                
-            binary_mask = (labels == filled_cluster).astype(np.uint8) * 255
-            binary_mask = binary_mask.reshape((TARGET_H, TARGET_W))
-            
-            # 노이즈 제거
+            # 1. 고온 영역 1: 빨강 ~ 주황 ~ 노란색 영역 (Hue: 0~35)
+            lower_warm1 = np.array([0, 80, 100])
+            upper_warm1 = np.array([35, 255, 255])
+            mask_warm1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
+
+            # 2. 고온 영역 2: 진한 빨간색 영역 (Hue: 165~180)
+            lower_warm2 = np.array([165, 80, 100])
+            upper_warm2 = np.array([180, 255, 255])
+            mask_warm2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
+
+            # 3. 최고온 영억: 흰색/극고온 (Saturation이 낮고 Value가 높은 밝은 영역)
+            lower_white = np.array([0, 0, 210])
+            upper_white = np.array([180, 60, 255])
+            mask_white = cv2.inRange(hsv, lower_white, upper_white)
+
+            # 충진 마스크 합치기 (고온/충진 영역만 255)
+            binary_mask = cv2.bitwise_or(mask_warm1, mask_warm2)
+            binary_mask = cv2.bitwise_or(binary_mask, mask_white)
+
+            # 노이즈 제거 (Morphology)
             kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             
@@ -240,7 +242,7 @@ if uploaded_file is not None:
 
             st.markdown(f"""
             <div class="info-card-box">
-                🔬 <b>이진화 분석 알고리즘:</b> Automatic K-Means Color Segmentation (LAB B-Channel)<br>
+                🔬 <b>이진화 분석 알고리즘:</b> HSV Absolute Thermal Spectrum Filter<br>
                 💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({final_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-final_ratio:.1f}%)</b>
             </div>
             """, unsafe_allow_html=True)
