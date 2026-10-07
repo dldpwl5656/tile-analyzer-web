@@ -224,4 +224,55 @@ if uploaded_file is not None:
                 st.markdown("""
                 **[현장 조치 지침]**
                 * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
-                * **
+                * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                """)
+
+            st.markdown(f"""
+            <div class="info-card-box">
+                🔬 <b>이진화 분석 알고리즘:</b> Otsu Automatic Thresholding (LAB Color Space)<br>
+                💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({raw_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-raw_ratio:.1f}%)</b>
+            </div>
+            """, unsafe_allow_html=True)
+
+            now = datetime.now()
+            new_record = {
+                "사진 이름": uploaded_file.name,
+                "시간": now.strftime("%H:%M:%S"),
+                "최종 충진율": f"{final_ratio:.2f}%",
+                "충진 픽셀": f"{filled_pixels:,} px",
+                "공복 픽셀": f"{void_pixels:,} px"
+            }
+            
+            if not st.session_state.history or st.session_state.history[0]["시간"] != new_record["시간"]:
+                st.session_state.history.insert(0, new_record)
+
+        else:
+            with col2:
+                st.markdown('<div class="panel-header">2. 정면 보정 (RGB)</div>', unsafe_allow_html=True)
+                st.info("4곳 터치 후 분석 버튼 클릭")
+            with col3:
+                st.markdown('<div class="panel-header">3. 정밀 이진화 마스크</div>', unsafe_allow_html=True)
+                st.info("분석 대기 중")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
+            if st.session_state.history:
+                df = pd.DataFrame(st.session_state.history)
+                st.dataframe(df, use_container_width=True)
+                
+                col_exp1, col_exp2 = st.columns([1, 1])
+                with col_exp1:
+                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
+                with col_exp2:
+                    if st.button("🧹 이력 초기화", use_container_width=True):
+                        st.session_state.history = []
+                        st.session_state.pts = []
+                        st.session_state.coord_key += 1
+                        st.rerun()
+            else:
+                st.caption("저장된 이력이 없습니다.")
+
+else:
+    st.session_state.pts = []
+    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
