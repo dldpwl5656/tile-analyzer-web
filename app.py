@@ -93,7 +93,7 @@ if "coord_key" not in st.session_state:
 
 st.markdown("""
     <div class="title-card">
-        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템 (HSV+Otsu)</h1>
+        <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
         <p>열화상 이미지를 이용한 타일 뒷채움 비파괴검사</p>
     </div>
 """, unsafe_allow_html=True)
@@ -179,30 +179,18 @@ if uploaded_file is not None:
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
             # ---------------------------------------------------------
-            # 🔬 HSV + LAB 복합 이진화
+            # 🔬 LAB (B-Channel) + Otsu Thresholding (원래 알고리즘)
             # ---------------------------------------------------------
-            hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-            
-            lower_warm1 = np.array([0, 70, 50])
-            upper_warm1 = np.array([35, 255, 255])
-            lower_warm2 = np.array([160, 70, 50])
-            upper_warm2 = np.array([180, 255, 255])
-            
-            mask_warm1 = cv2.inRange(hsv, lower_warm1, upper_warm1)
-            mask_warm2 = cv2.inRange(hsv, lower_warm2, upper_warm2)
-            hsv_mask = cv2.bitwise_or(mask_warm1, mask_warm2)
-            
             lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
             _, _, b_channel = cv2.split(lab)
+            
             filtered = cv2.bilateralFilter(b_channel, 9, 75, 75)
-            _, lab_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            _, binary_mask = cv2.threshold(filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            combined_mask = cv2.bitwise_and(hsv_mask, lab_mask)
-            
-            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             
-            binary_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_close)
+            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel_close)
             binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel_open)
             
             total_pixels = TARGET_W * TARGET_H
@@ -238,7 +226,7 @@ if uploaded_file is not None:
 
             st.markdown(f"""
             <div class="info-card-box">
-                🔬 <b>이진화 분석 알고리즘:</b> HSV Warm Color Filtering + LAB Otsu Composite<br>
+                🔬 <b>이진화 분석 알고리즘:</b> Otsu Automatic Thresholding (LAB B-Channel)<br>
                 💡 <b>픽셀 개수:</b> 충진 영역(흰색): <b>{filled_pixels:,} px ({final_ratio:.1f}%)</b> | 미충진/공복(검은색): <b>{void_pixels:,} px ({100-final_ratio:.1f}%)</b>
             </div>
             """, unsafe_allow_html=True)
