@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>온도 스케일 정규화 전처리 및 색상 범주 기반 정밀 분석 솔루션</p>
+        <p>색상 범주별 세분화된 가중치(초록 100% / 노랑 70% / 주황 40% / 빨강 0%) 기반 분석 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -142,50 +142,60 @@ if uploaded_file is not None:
             
             matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
             warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
+            warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
-            lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
-            l_channel, a_channel, b_channel = cv2.split(lab)
+            # HSV 변환
+            hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
             
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l_channel = clahe.apply(l_channel)
-            
-            normalized_warped = cv2.merge((l_channel, a_channel, b_channel))
-            normalized_warped = cv2.cvtColor(normalized_warped, cv2.COLOR_LAB2BGR)
-            
-            warped_rgb = cv2.cvtColor(normalized_warped, cv2.COLOR_BGR2RGB)
-            
-            hsv = cv2.cvtColor(normalized_warped, cv2.COLOR_BGR2HSV)
-            
-            mask_green = cv2.inRange(hsv, np.array([18, 25, 25]), np.array([98, 255, 255]))
-            mask_yellow_orange = cv2.inRange(hsv, np.array([8, 25, 25]), np.array([17, 255, 255]))
-            mask_yellow_orange = cv2.bitwise_and(mask_yellow_orange, cv2.bitwise_not(mask_green))
+            # 1. 초록색 영역 (완전 충진 - 100% 가중치)
+            mask_green = cv2.inRange(hsv, np.array([25, 20, 20]), np.array([90, 255, 255]))
 
+            # 2. 노란색 영역 (중간 충진 - 70% 가중치)
+            mask_yellow = cv2.inRange(hsv, np.array([18, 20, 20]), np.array([24, 255, 255]))
+
+            # 3. 주황색 영역 (부분 충진 - 40% 가중치)
+            mask_orange = cv2.inRange(hsv, np.array([8, 20, 20]), np.array([17, 255, 255]))
+
+            # 영역 우선순위에 따른 중복 제거 (초록 > 노랑 > 주황 순서)
+            mask_yellow = cv2.bitwise_and(mask_yellow, cv2.bitwise_not(mask_green))
+            mask_orange = cv2.bitwise_and(mask_orange, cv2.bitwise_not(cv2.bitwise_or(mask_green, mask_yellow)))
+
+            # 모폴로지 연산 (노이즈 제거)
             kernel = np.ones((3, 3), np.uint8)
             mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
-            mask_yellow_orange = cv2.morphologyEx(mask_yellow_orange, cv2.MORPH_OPEN, kernel)
+            mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_OPEN, kernel)
+            mask_orange = cv2.morphologyEx(mask_orange, cv2.MORPH_OPEN, kernel)
 
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_yellow_orange)
-            filtered_yellow = np.zeros_like(mask_yellow_orange)
-            for i in range(1, num_labels):
-                if stats[i, cv2.CC_STAT_AREA] >= 20:
-                    filtered_yellow[labels == i] = 255
-            mask_yellow_orange = filtered_yellow
+            # 자잘한 노이즈 제거 (최소 크기 20픽셀 이상만 인정)
+            for m in [mask_yellow, mask_orange]:
+                num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(m)
+                filtered_m = np.zeros_like(m)
+                for i in range(1, num_labels):
+                    if stats[i, cv2.CC_STAT_AREA] >= 20:
+                        filtered_m[labels == i] = 255
+                m[:] = filtered_m[:]
 
+            # 진단 마스크 시각화 생성 (초록=흰색 255, 노랑=밝은회색 180, 주황=어두운회색 100, 빨강/나머지=검은색 0)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-            display_mask_gray[mask_yellow_orange == 255] = 128  # 회색
-            display_mask_gray[mask_green == 255] = 255          # 흰색
+            display_mask_gray[mask_orange == 255] = 100  # 주황색 (40%)
+            display_mask_gray[mask_yellow == 255] = 180  # 노란색 (70%)
+            display_mask_gray[mask_green == 255]  = 255  # 초록색 (100%)
 
+            # 픽셀 수 및 비율 계산
             green_pixels = np.sum(mask_green == 255)
-            yellow_orange_pixels = np.sum(mask_yellow_orange == 255)
+            yellow_pixels = np.sum(mask_yellow == 255)
+            orange_pixels = np.sum(mask_orange == 255)
             total_pixels = TARGET_W * TARGET_H
 
             green_pct = (green_pixels / total_pixels) * 100.0
-            yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
+            yellow_pct = (yellow_pixels / total_pixels) * 100.0
+            orange_pct = (orange_pixels / total_pixels) * 100.0
 
-            final_ratio = min(green_pct + (yellow_orange_pct * 0.70), 100.0)
+            # 세분화된 가중치 적용 (초록 100%, 노랑 70%, 주황 40%)
+            final_ratio = min(green_pct + (yellow_pct * 0.70) + (orange_pct * 0.40), 100.0)
 
             with col2:
-                st.markdown("##### 2. 정면 보정 (전처리 적용)")
+                st.markdown("##### 2. 정면 보정")
                 st.image(warped_rgb, use_container_width=True)
             
             with col3:
@@ -204,7 +214,6 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
-            # 사진 이름을 원본 파일명 그대로 지정
             saved_title = uploaded_file.name
 
             now = datetime.now()
