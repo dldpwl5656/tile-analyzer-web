@@ -148,30 +148,30 @@ if uploaded_file is not None:
             hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
             
             # 1. 초록색 영역 (완전 충진 - 100% 가중치)
-            mask_green = cv2.inRange(hsv, np.array([25, 20, 20]), np.array([90, 255, 255]))
+            mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
 
-            # 2. 노란색 영역 (중간 충진 - 80% 가중치)
-            mask_yellow = cv2.inRange(hsv, np.array([18, 20, 20]), np.array([24, 255, 255]))
+            # 2. 노란색 영역 (중간 충진 - 80% 가중치) [범위 확장]
+            mask_yellow = cv2.inRange(hsv, np.array([16, 15, 15]), np.array([26, 255, 255]))
 
-            # 3. 주황색 영역 (부분 충진 - 60% 가중치)
-            mask_orange = cv2.inRange(hsv, np.array([8, 20, 20]), np.array([17, 255, 255]))
+            # 3. 주황색 영역 (부분 충진 - 60% 가중치) [범위 확장]
+            mask_orange = cv2.inRange(hsv, np.array([6, 15, 15]), np.array([15, 255, 255]))
 
             # 영역 우선순위에 따른 중복 제거 (초록 > 노랑 > 주황 순서)
             mask_yellow = cv2.bitwise_and(mask_yellow, cv2.bitwise_not(mask_green))
             mask_orange = cv2.bitwise_and(mask_orange, cv2.bitwise_not(cv2.bitwise_or(mask_green, mask_yellow)))
 
-            # 모폴로지 연산 (노이즈 제거)
-            kernel = np.ones((3, 3), np.uint8)
+            # 모폴로지 연산 (노이즈 제거 - 크기 완화하여 작은 영역도 보존)
+            kernel = np.ones((2, 2), np.uint8)
             mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
             mask_yellow = cv2.morphologyEx(mask_yellow, cv2.MORPH_OPEN, kernel)
             mask_orange = cv2.morphologyEx(mask_orange, cv2.MORPH_OPEN, kernel)
 
-            # 자잘한 노이즈 제거 (최소 크기 20픽셀 이상만 인정)
+            # 자잘한 노이즈 기준 완화 (최소 크기 10픽셀 이상만 인정)
             for m in [mask_yellow, mask_orange]:
                 num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(m)
                 filtered_m = np.zeros_like(m)
                 for i in range(1, num_labels):
-                    if stats[i, cv2.CC_STAT_AREA] >= 20:
+                    if stats[i, cv2.CC_STAT_AREA] >= 10:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
