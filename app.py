@@ -124,7 +124,7 @@ if uploaded_file is not None:
                 st.session_state.coord_key += 1
                 st.rerun()
 
-        # 4개의 좌표가 모두 찍히면 버튼 클릭 여부와 관계없이 자동으로 분석 실행
+        # 4개의 좌표가 모두 찍히면 자동으로 분석 실행
         if len(st.session_state.pts) == 4:
             clicked_pts = []
             x_scale = img_w / canvas_w
@@ -193,4 +193,73 @@ if uploaded_file is not None:
             st.markdown("<br>", unsafe_allow_html=True)
 
             if final_ratio >= 80.0:
-                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 가중 충진율: **{final_ratio:.2f}%
+                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 가중 충진율: {final_ratio:.2f}%")
+            else:
+                st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 가중 충진율: {final_ratio:.2f}%")
+                st.markdown("""
+                **[현장 조치 지침]**
+                * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
+                * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                """)
+
+            saved_title = uploaded_file.name
+
+            now = datetime.now()
+            new_record = {
+                "사진 이름": saved_title,
+                "날짜시간": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "최종 충진율": f"{final_ratio:.2f}%",
+                "warped_img": warped_rgb,
+                "mask_img": display_mask_gray
+            }
+            
+            if not st.session_state.history or st.session_state.history[0].get("날짜시간") != new_record["날짜시간"]:
+                st.session_state.history.insert(0, new_record)
+
+        else:
+            with col2:
+                st.markdown("##### 2. 정면 보정")
+                st.info("좌측 이미지에 모서리 4개를 모두 터치하세요.")
+            with col3:
+                st.markdown("##### 3. 진단 마스크")
+                st.info("분석 대기 중")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
+            if st.session_state.history:
+                df_display = pd.DataFrame([{k: v for k, v in item.items() if k not in ["warped_img", "mask_img"]} for item in st.session_state.history])
+                st.dataframe(df_display, use_container_width=True)
+                
+                st.markdown("🔍 **이력 상세 보기 (아래에서 기록을 선택하세요)**")
+                selected_idx = st.selectbox(
+                    "확인할 분석 이력 선택", 
+                    range(len(st.session_state.history)), 
+                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']} ({st.session_state.history[i]['최종 충진율']})"
+                )
+                
+                if selected_idx is not None:
+                    rec = st.session_state.history[selected_idx]
+                    h_col1, h_col2 = st.columns(2)
+                    with h_col1:
+                        st.text("보정된 원본 이미지")
+                        st.image(rec["warped_img"], use_container_width=True)
+                    with h_col2:
+                        st.text("당시 생성된 진단 마스크")
+                        st.image(rec["mask_img"], use_container_width=True)
+                
+                col_exp1, col_exp2 = st.columns([1, 1])
+                with col_exp1:
+                    csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
+                with col_exp2:
+                    if st.button("🧹 이력 초기화", use_container_width=True):
+                        st.session_state.history = []
+                        st.session_state.pts = []
+                        st.session_state.coord_key += 1
+                        st.rerun()
+            else:
+                st.caption("저장된 이력이 없습니다.")
+
+else:
+    st.session_state.pts = []
+    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
