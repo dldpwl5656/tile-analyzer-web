@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>색상 범주별 가중치(초록 100% / 노랑·주황 통합 80% / 빨강 0%) 기반 분석 솔루션</p>
+        <p>색상 범주별 가중치(초록 100% / 노랑·주황 통합 90% / 빨강 0%) 기반 분석 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -146,7 +146,7 @@ if uploaded_file is not None:
             # 1. 초록색 영역 (완전 충진 - 100% 가중치)
             mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
 
-            # 2. 노란색 + 주황색 통합 영역 (부분 충진 - 80% 가중치)
+            # 2. 노란색 + 주황색 통합 영역 (부분 충진 - 90% 가중치)
             mask_yellow_orange = cv2.inRange(hsv, np.array([6, 15, 15]), np.array([26, 255, 255]))
 
             # 초록색 영역 우선 적용 (중복 제거)
@@ -179,8 +179,8 @@ if uploaded_file is not None:
             green_pct = (green_pixels / total_pixels) * 100.0
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
 
-            # 최종 가중치 적용 (초록 100%, 노랑·주황 통합 80%)
-            final_ratio = min(green_pct + (yellow_orange_pct * 0.80), 100.0)
+            # 최종 가중치 적용 (초록 100%, 노랑·주황 통합 90%)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.90), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정")
