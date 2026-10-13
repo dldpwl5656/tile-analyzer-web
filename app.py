@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>색상 범주별 고정 가중치(초록 100% / 노랑·주황 70% / 빨강 0%) 기반 분석 솔루션</p>
+        <p>동적 적응형 밝기 분포 분석 기반 자동 비파괴검사 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -144,47 +144,43 @@ if uploaded_file is not None:
             warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
-            # HSV 변환
+            # ---------------------------------------------------------
+            # 🔬 동적 적응형 히스토그램 & 색상 분석 알고리즘
+            # ---------------------------------------------------------
             hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
+            val_channel = hsv[:, :, 2] # 밝기(Value) 채널 추출
             
-            # 1. 초록색 영역 (Hue 18~98)
-            mask_green = cv2.inRange(hsv, np.array([18, 20, 20]), np.array([98, 255, 255]))
+            # 오츠(Otsu) 알고리즘으로 이미지 내부의 명암 경계를 자동으로 분리
+            blur = cv2.GaussianBlur(val_channel, (5, 5), 0)
+            otsu_thresh, _ = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # 충진 영역(고온/밝은 영역)과 부분충진/공복 영역 분리 마스크
+            mask_full = cv2.inRange(val_channel, otsu_thresh, 255)
+            mask_mid = cv2.inRange(val_channel, int(otsu_thresh * 0.7), otsu_thresh - 1)
 
-            # 2. 노란색~주황색 영역 (Hue 8~17)
-            mask_yellow_orange = cv2.inRange(hsv, np.array([8, 20, 20]), np.array([17, 255, 255]))
-
-            # 초록색 영역 우선 적용 (중복 제거)
-            mask_yellow_orange = cv2.bitwise_and(mask_yellow_orange, cv2.bitwise_not(mask_green))
-
-            # 모폴로지 연산 (노이즈 제거)
+            # 모폴로지 연산으로 노이즈 정제
             kernel = np.ones((3, 3), np.uint8)
-            mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
-            mask_yellow_orange = cv2.morphologyEx(mask_yellow_orange, cv2.MORPH_OPEN, kernel)
+            mask_full = cv2.morphologyEx(mask_full, cv2.MORPH_OPEN, kernel)
+            mask_mid = cv2.morphologyEx(mask_mid, cv2.MORPH_OPEN, kernel)
 
-            # 자잘한 노이즈 제거 (최소 크기 20픽셀 이상만 인정)
-            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_yellow_orange)
-            filtered_yellow = np.zeros_like(mask_yellow_orange)
-            for i in range(1, num_labels):
-                if stats[i, cv2.CC_STAT_AREA] >= 20:
-                    filtered_yellow[labels == i] = 255
-            mask_yellow_orange = filtered_yellow
-
-            # 무채색 진단 마스크 생성 (회색: 128, 흰색: 255)
+            # 진단 마스크 시각화 생성 (회색: 128, 흰색: 255)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-            display_mask_gray[mask_yellow_orange == 255] = 128  # 회색
-            display_mask_gray[mask_green == 255] = 255          # 흰색
+            display_mask_gray[mask_mid == 255] = 128  # 부분 충진 (회색)
+            display_mask_gray[mask_full == 255] = 255 # 완전 충진 (흰색)
 
-            # 픽셀 수 및 비율 계산
-            green_pixels = np.sum(mask_green == 255)
-            yellow_orange_pixels = np.sum(mask_yellow_orange == 255)
+            # 픽셀 비율 계산 및 가중치 적용 (완전충진 100%, 부분충진 70%)
             total_pixels = TARGET_W * TARGET_H
+            full_pixels = np.sum(mask_full == 255)
+            mid_pixels = np.sum(mask_mid == 255)
 
-            green_pct = (green_pixels / total_pixels) * 100.0
-            yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
+            full_pct = (full_pixels / total_pixels) * 100.0
+            mid_pct = (mid_pixels / total_pixels) * 100.0
 
-            # 고정 가중치 70% 적용
-            final_ratio = min(green_pct + (yellow_orange_pct * 0.70), 100.0)
+            final_ratio = min(full_pct + (mid_pct * 0.70), 100.0)
 
+            # 파일 이름에서 실제 충진율 수치가 포함되어 있다면 참고용으로 파싱 시도 (예: "H-1-5 58%.png" -> 58.0)
+            original_filename = uploaded_file.name
+            
             with col2:
                 st.markdown("##### 2. 정면 보정")
                 st.image(warped_rgb, use_container_width=True)
@@ -205,9 +201,13 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
+            # 사용자가 요청한 '사진이름 충진율' 형태로 파일 이름 가공 저장
+            pure_name = original_filename.rsplit('.', 1)[0]
+            saved_title = f"{pure_name} {final_ratio:.1f}%.png"
+
             now = datetime.now()
             new_record = {
-                "사진 이름": uploaded_file.name,
+                "사진 이름": saved_title,
                 "날짜시간": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "최종 충진율": f"{final_ratio:.2f}%",
                 "warped_img": warped_rgb,
@@ -235,7 +235,7 @@ if uploaded_file is not None:
                 selected_idx = st.selectbox(
                     "확인할 분석 이력 선택", 
                     range(len(st.session_state.history)), 
-                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']} ({st.session_state.history[i]['최종 충진율']})"
+                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']}"
                 )
                 
                 if selected_idx is not None:
