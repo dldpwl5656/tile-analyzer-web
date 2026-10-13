@@ -73,9 +73,6 @@ st.markdown("""
 st.sidebar.header("📁 이미지 업로드")
 uploaded_file = st.sidebar.file_uploader("열화상 사진 선택", type=["jpg", "jpeg", "png", "bmp"])
 
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **마스크 명암 및 가중치 기준**\n\n- ⚪ **완전 충진(초록)**: 흰색 (100% 반영)\n- 🔘 **부분 충진(노랑/주황)**: 회색 (70% 반영)\n- ⚫ **미충진(빨강/빛반사)**: 검은색 (0% 반영)")
-
 if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     full_img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
@@ -202,6 +199,11 @@ if uploaded_file is not None:
                 st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 가중 충진율: **{final_ratio:.2f}%**")
             else:
                 st.error(f"🚨 **[기준 80% 미달 (불합격)]** 최종 가중 충진율: **{final_ratio:.2f}%**")
+                st.markdown("""
+                **[현장 조치 지침]**
+                * **공사 중:** 재시공 필요, 타일 즉시 철거 후 개량압착공법으로 재시공
+                * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
+                """)
 
             now = datetime.now()
             new_record = {
@@ -226,7 +228,6 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
             if st.session_state.history:
-                # 데이터프레임에는 이미지를 제외하고 텍스트만 표시
                 df_display = pd.DataFrame([{k: v for k, v in item.items() if k not in ["warped_img", "mask_img"]} for item in st.session_state.history])
                 st.dataframe(df_display, use_container_width=True)
                 
