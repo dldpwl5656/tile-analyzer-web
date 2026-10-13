@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>색상 범주별 세분화된 가중치(초록 100% / 노랑 70% / 주황 40% / 빨강 0%) 기반 분석 솔루션</p>
+        <p>색상 범주별 세분화된 가중치(초록 100% / 노랑 80% / 주황 50% / 빨강 0%) 기반 분석 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -150,10 +150,10 @@ if uploaded_file is not None:
             # 1. 초록색 영역 (완전 충진 - 100% 가중치)
             mask_green = cv2.inRange(hsv, np.array([25, 20, 20]), np.array([90, 255, 255]))
 
-            # 2. 노란색 영역 (중간 충진 - 70% 가중치)
+            # 2. 노란색 영역 (중간 충진 - 80% 가중치)
             mask_yellow = cv2.inRange(hsv, np.array([18, 20, 20]), np.array([24, 255, 255]))
 
-            # 3. 주황색 영역 (부분 충진 - 40% 가중치)
+            # 3. 주황색 영역 (부분 충진 - 50% 가중치)
             mask_orange = cv2.inRange(hsv, np.array([8, 20, 20]), np.array([17, 255, 255]))
 
             # 영역 우선순위에 따른 중복 제거 (초록 > 노랑 > 주황 순서)
@@ -175,10 +175,10 @@ if uploaded_file is not None:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
-            # 진단 마스크 시각화 생성 (초록=흰색 255, 노랑=밝은회색 180, 주황=어두운회색 100, 빨강/나머지=검은색 0)
+            # 진단 마스크 시각화 생성 (초록=흰색 255, 노랑=밝은회색 204, 주황=회색 128, 빨강/나머지=검은색 0)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
-            display_mask_gray[mask_orange == 255] = 100  # 주황색 (40%)
-            display_mask_gray[mask_yellow == 255] = 180  # 노란색 (70%)
+            display_mask_gray[mask_orange == 255] = 128  # 주황색 (50%)
+            display_mask_gray[mask_yellow == 255] = 204  # 노란색 (80%)
             display_mask_gray[mask_green == 255]  = 255  # 초록색 (100%)
 
             # 픽셀 수 및 비율 계산
@@ -191,8 +191,8 @@ if uploaded_file is not None:
             yellow_pct = (yellow_pixels / total_pixels) * 100.0
             orange_pct = (orange_pixels / total_pixels) * 100.0
 
-            # 세분화된 가중치 적용 (초록 100%, 노랑 70%, 주황 40%)
-            final_ratio = min(green_pct + (yellow_pct * 0.70) + (orange_pct * 0.40), 100.0)
+            # 세분화된 가중치 적용 (초록 100%, 노랑 80%, 주황 50%)
+            final_ratio = min(green_pct + (yellow_pct * 0.80) + (orange_pct * 0.50), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정")
