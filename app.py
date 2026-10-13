@@ -181,11 +181,9 @@ if uploaded_file is not None:
             green_pixels = np.sum(mask_green == 255)
             yellow_orange_pixels = np.sum(mask_yellow_orange == 255)
             total_pixels = TARGET_W * TARGET_H
-            red_pixels = total_pixels - (green_pixels + yellow_orange_pixels)
 
             green_pct = (green_pixels / total_pixels) * 100.0
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
-            red_pct = max((red_pixels / total_pixels) * 100.0, 0.0)
 
             # 고정 가중치 70% 적용
             final_ratio = min(green_pct + (yellow_orange_pct * 0.70), 100.0)
@@ -199,9 +197,6 @@ if uploaded_file is not None:
                 st.image(display_mask_gray, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            st.info("💡 **진단 마스크 톤 분석:** ⚪ **흰색(완전 충진)**: 100% | 🔘 **회색(부분 충진)**: 70% | ⚫ **검은색(미충진/빛반사)**: 0%")
-            st.write(f"⚪ **흰색 (100%):** {green_pct:.2f}% | 🔘 **회색 (70%):** {yellow_orange_pct:.2f}% | ⚫ **검은색 (0%):** {red_pct:.2f}%")
 
             if final_ratio >= 80.0:
                 st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 가중 충진율: **{final_ratio:.2f}%**")
@@ -212,7 +207,9 @@ if uploaded_file is not None:
             new_record = {
                 "사진 이름": uploaded_file.name,
                 "날짜시간": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "최종 충진율": f"{final_ratio:.2f}%"
+                "최종 충진율": f"{final_ratio:.2f}%",
+                "warped_img": warped_rgb,
+                "mask_img": display_mask_gray
             }
             
             if not st.session_state.history or st.session_state.history[0].get("날짜시간") != new_record["날짜시간"]:
@@ -229,12 +226,30 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("📋 **분석 이력 기록 열기 / 닫기**", expanded=False):
             if st.session_state.history:
-                df = pd.DataFrame(st.session_state.history)
-                st.dataframe(df, use_container_width=True)
+                # 데이터프레임에는 이미지를 제외하고 텍스트만 표시
+                df_display = pd.DataFrame([{k: v for k, v in item.items() if k not in ["warped_img", "mask_img"]} for item in st.session_state.history])
+                st.dataframe(df_display, use_container_width=True)
+                
+                st.markdown("🔍 **이력 상세 보기 (아래에서 기록을 선택하세요)**")
+                selected_idx = st.selectbox(
+                    "확인할 분석 이력 선택", 
+                    range(len(st.session_state.history)), 
+                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']} ({st.session_state.history[i]['최종 충진율']})"
+                )
+                
+                if selected_idx is not None:
+                    rec = st.session_state.history[selected_idx]
+                    h_col1, h_col2 = st.columns(2)
+                    with h_col1:
+                        st.text("보정된 원본 이미지")
+                        st.image(rec["warped_img"], use_container_width=True)
+                    with h_col2:
+                        st.text("당시 생성된 진단 마스크")
+                        st.image(rec["mask_img"], use_container_width=True)
                 
                 col_exp1, col_exp2 = st.columns([1, 1])
                 with col_exp1:
-                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                    csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
                 with col_exp2:
                     if st.button("🧹 이력 초기화", use_container_width=True):
