@@ -155,12 +155,3 @@ if uploaded_file is not None:
 
             # 초록색 영역 우선 적용 (중복 제거)
             mask_yellow_orange = cv2.bitwise_and(mask_yellow_orange, cv2.bitwise_not(mask_green))
-
-            # 모폴로지 연산 (노이즈 정제 및 경계 보정)
-            kernel = np.ones((2, 2), np.uint8)
-            mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
-            mask_yellow_orange = cv2.morphologyEx(mask_yellow_orange, cv2.MORPH_OPEN, kernel)
-            mask_yellow_orange = cv2.dilate(mask_yellow_orange, kernel, iterations=1)
-
-            # 자잘한 노이즈 제거 (최소 크기 10픽셀 이상만 인정)
-            num_labels, labels, stats, _ = cv
