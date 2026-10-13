@@ -83,7 +83,7 @@ if uploaded_file is not None:
         orig_img = full_img
         img_h, img_w = orig_img.shape[:2]
         
-        st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하 (4개 찍으면 즉시 자동 분석됩니다)</div>', unsafe_allow_html=True)
         
         MAX_W = 400
         if img_w > MAX_W:
@@ -118,18 +118,14 @@ if uploaded_file is not None:
                     st.session_state.pts.append(point)
                     st.rerun()
 
-            col_btn1, col_btn2 = st.columns([1, 1])
-            with col_btn1:
-                st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
-                if st.button("🔄 리셋", use_container_width=True):
-                    st.session_state.pts = []
-                    st.session_state.coord_key += 1
-                    st.rerun()
-                    
-            with col_btn2:
-                run_btn = st.button("🚀 분석 실행", disabled=(len(st.session_state.pts) != 4), type="primary", use_container_width=True)
+            st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
+            if st.button("🔄 리셋 (다시 찍기)", use_container_width=True):
+                st.session_state.pts = []
+                st.session_state.coord_key += 1
+                st.rerun()
 
-        if run_btn and len(st.session_state.pts) == 4:
+        # 4개의 좌표가 모두 찍히면 버튼 클릭 여부와 관계없이 자동으로 분석 실행
+        if len(st.session_state.pts) == 4:
             clicked_pts = []
             x_scale = img_w / canvas_w
             y_scale = img_h / canvas_h
@@ -155,3 +151,46 @@ if uploaded_file is not None:
 
             # 초록색 영역 우선 적용 (중복 제거)
             mask_yellow_orange = cv2.bitwise_and(mask_yellow_orange, cv2.bitwise_not(mask_green))
+
+            # 모폴로지 연산 (노이즈 정제 및 경계 보정)
+            kernel = np.ones((2, 2), np.uint8)
+            mask_green = cv2.morphologyEx(mask_green, cv2.MORPH_OPEN, kernel)
+            mask_yellow_orange = cv2.morphologyEx(mask_yellow_orange, cv2.MORPH_OPEN, kernel)
+            mask_yellow_orange = cv2.dilate(mask_yellow_orange, kernel, iterations=1)
+
+            # 자잘한 노이즈 제거 (최소 크기 10픽셀 이상만 인정)
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_yellow_orange)
+            filtered_yo = np.zeros_like(mask_yellow_orange)
+            for i in range(1, num_labels):
+                if stats[i, cv2.CC_STAT_AREA] >= 10:
+                    filtered_yo[labels == i] = 255
+            mask_yellow_orange = filtered_yo
+
+            # 진단 마스크 시각화 생성 (초록=흰색 255, 노랑·주황 통합=회색 153, 빨강/나머지=검은색 0)
+            display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
+            display_mask_gray[mask_yellow_orange == 255] = 153  # 노랑·주황 통합 (60%)
+            display_mask_gray[mask_green == 255]        = 255  # 초록색 (100%)
+
+            # 픽셀 수 및 비율 계산
+            green_pixels = np.sum(mask_green == 255)
+            yellow_orange_pixels = np.sum(mask_yellow_orange == 255)
+            total_pixels = TARGET_W * TARGET_H
+
+            green_pct = (green_pixels / total_pixels) * 100.0
+            yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
+
+            # 최종 가중치 적용 (초록 100%, 노랑·주황 통합 60%)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.60), 100.0)
+
+            with col2:
+                st.markdown("##### 2. 정면 보정")
+                st.image(warped_rgb, use_container_width=True)
+            
+            with col3:
+                st.markdown("##### 3. 진단 마스크 (Grayscale)")
+                st.image(display_mask_gray, use_container_width=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if final_ratio >= 80.0:
+                st.success(f"🎉 **[기준 80% 만족 (합격)]** 최종 가중 충진율: **{final_ratio:.2f}%
