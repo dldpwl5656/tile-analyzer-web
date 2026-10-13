@@ -66,7 +66,7 @@ if "coord_key" not in st.session_state:
 st.markdown("""
     <div class="title-card">
         <h1>🔥 열화상 타일 정밀 충진율 분석 시스템</h1>
-        <p>색상 범주별 가중치(초록·노랑·주황 100% / 경계 20% / 빨강 0%) 기반 분석 솔루션</p>
+        <p>색상 범주별 세분화된 가중치(초록 100% / 노랑·주황 90% / 경계 20% / 빨강 0%) 기반 분석 솔루션</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -151,7 +151,7 @@ if uploaded_file is not None:
             # 1. 초록색 영역 (완전 충진 - 100% 가중치)
             mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
 
-            # 2. 노란색 + 주황색 영역 (완전 충진으로 통합 - 100% 가중치)
+            # 2. 노란색 + 주황색 통합 영역 (부분 충진 - 90% 가중치)
             mask_yellow_orange = cv2.inRange(hsv, np.array([8, 15, 15]), np.array([26, 255, 255]))
 
             # 3. 빨강-주황 경계 천이 영역 (미세 충진 - 20% 가중치)
@@ -176,10 +176,10 @@ if uploaded_file is not None:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
-            # 진단 마스크 시각화 생성 (초록/노랑·주황=255 흰색, 경계=50 어두운회색, 나머지=0 검은색)
+            # 진단 마스크 시각화 생성
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
             display_mask_gray[mask_boundary == 255]     = 50   # 경계 천이 영역 (20%)
-            display_mask_gray[mask_yellow_orange == 255] = 255  # 노랑·주황 통합 (100%)
+            display_mask_gray[mask_yellow_orange == 255] = 230  # 노랑·주황 통합 (90%)
             display_mask_gray[mask_green == 255]        = 255  # 초록색 (100%)
 
             # 픽셀 수 및 비율 계산
@@ -192,8 +192,7 @@ if uploaded_file is not None:
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
             boundary_pct = (boundary_pixels / total_pixels) * 100.0
 
-            # 최종 가중치 적용 (초록, 노랑·주황 각 100%, 경계 20%)
-            final_ratio = min(green_pct + yellow_orange_pct + (boundary_pct * 0.20), 100.0)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.90) + (boundary_pct * 0.20), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정")
