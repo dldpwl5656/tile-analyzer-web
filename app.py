@@ -143,13 +143,9 @@ if uploaded_file is not None:
             matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
             warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
             
-            # ---------------------------------------------------------
-            # 🔬 [핵심 전처리] 카메라별 자동 스케일링 오차를 잡기 위한 명암/대비 표준화 (CLAHE + Normalize)
-            # ---------------------------------------------------------
             lab = cv2.cvtColor(warped_img, cv2.COLOR_BGR2LAB)
             l_channel, a_channel, b_channel = cv2.split(lab)
             
-            # CLAHE(Contrast Limited Adaptive Histogram Equalization)로 타일 내부 국소 대비 표준화
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             l_channel = clahe.apply(l_channel)
             
@@ -158,7 +154,6 @@ if uploaded_file is not None:
             
             warped_rgb = cv2.cvtColor(normalized_warped, cv2.COLOR_BGR2RGB)
             
-            # HSV 변환 및 색상 마스크 적용
             hsv = cv2.cvtColor(normalized_warped, cv2.COLOR_BGR2HSV)
             
             mask_green = cv2.inRange(hsv, np.array([18, 25, 25]), np.array([98, 255, 255]))
@@ -209,9 +204,8 @@ if uploaded_file is not None:
                 * **공사 완료 후:** 보강 필요, 줄눈 타공 후 에폭시 수지 고압 주입 보강
                 """)
 
-            original_filename = uploaded_file.name
-            pure_name = original_filename.rsplit('.', 1)[0]
-            saved_title = f"{pure_name} {final_ratio:.1f}%"
+            # 사진 이름을 원본 파일명 그대로 지정
+            saved_title = uploaded_file.name
 
             now = datetime.now()
             new_record = {
@@ -243,7 +237,7 @@ if uploaded_file is not None:
                 selected_idx = st.selectbox(
                     "확인할 분석 이력 선택", 
                     range(len(st.session_state.history)), 
-                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']}"
+                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']} ({st.session_state.history[i]['최종 충진율']})"
                 )
                 
                 if selected_idx is not None:
