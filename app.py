@@ -83,7 +83,7 @@ if uploaded_file is not None:
         orig_img = full_img
         img_h, img_w = orig_img.shape[:2]
         
-        st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하 (4개 찍으면 즉시 자동 분석됩니다)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-instruction">📌 <b>RGB 타일 영역 4개 모서리 클릭:</b> 1.좌상 ➔ 2.우상 ➔ 3.우하 ➔ 4.좌하 후 아래 [분석 실행] 버튼을 누르세요</div>', unsafe_allow_html=True)
         
         MAX_W = 400
         if img_w > MAX_W:
@@ -116,34 +116,20 @@ if uploaded_file is not None:
                 point = [value["x"], value["y"]]
                 if len(st.session_state.pts) < 4 and point not in st.session_state.pts:
                     st.session_state.pts.append(point)
+
+            col_btn1, col_btn2 = st.columns([1, 1])
+            with col_btn1:
+                st.write(f"📍 좌표: **{len(st.session_state.pts)} / 4**")
+                if st.button("🔄 리셋", use_container_width=True):
+                    st.session_state.pts = []
+                    st.session_state.coord_key += 1
                     st.rerun()
+            with col_btn2:
+                run_btn = st.button("🚀 분석 실행", disabled=(len(st.session_state.pts) != 4), type="primary", use_container_width=True)
 
-            st.write(f"📍 좌표 선택: **{len(st.session_state.pts)} / 4**")
-            if st.button("🔄 리셋 (다시 찍기)", use_container_width=True):
-                st.session_state.pts = []
-                st.session_state.coord_key += 1
-                st.rerun()
-
-        # 4개의 좌표가 모두 찍히면 자동으로 분석 실행
-        if len(st.session_state.pts) == 4:
+        if run_btn and len(st.session_state.pts) == 4:
             clicked_pts = []
             x_scale = img_w / canvas_w
             y_scale = img_h / canvas_h
             for pt in st.session_state.pts:
                 clicked_pts.append([int(pt[0] * x_scale), int(pt[1] * y_scale)])
-
-            src_pts = np.float32(clicked_pts)
-            TARGET_W, TARGET_H = 600, 300
-            dst_pts = np.float32([[0, 0], [TARGET_W, 0], [TARGET_W, TARGET_H], [0, TARGET_H]])
-            
-            matrix = cv2.getPerspectiveTransform(src_pts, dst_pts)
-            warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
-            warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
-            
-            # HSV 변환
-            hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
-            
-            # 1. 초록색 영역 (완전 충진 - 100% 가중치)
-            mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
-
-            # 2. 노란색 + 주황색 통합 영역 (부분 충진 - 90% 가중치
