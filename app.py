@@ -152,11 +152,11 @@ if uploaded_file is not None:
             # HSV 색공간 변환을 통한 정밀 이진화 및 마스크 추출
             hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
             
-            # 1. 초록색 영역 (완전 충진 - 100%)
-            mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
+            # 1. 초록색 영역 (완전 충진 - 100%) - 범위 미세 확장으로 고충진 타일 손실 방지
+            mask_green = cv2.inRange(hsv, np.array([22, 12, 12]), np.array([98, 255, 255]))
 
-            # 2. 노란색 + 주황색 영역 (부분 충진 - 60% 가중치 부여로 수정)
-            mask_yellow_orange = cv2.inRange(hsv, np.array([8, 15, 15]), np.array([26, 255, 255]))
+            # 2. 노란색 + 주황색 영역 (부분 충진 - 가중치를 50%로 최적화 조정)
+            mask_yellow_orange = cv2.inRange(hsv, np.array([8, 15, 15]), np.array([25, 255, 255]))
 
             # 3. 빨강-주황 경계 천이 영역 (미세 가중치 - 20%)
             mask_boundary = cv2.inRange(hsv, np.array([3, 15, 15]), np.array([7, 255, 255]))
@@ -180,10 +180,10 @@ if uploaded_file is not None:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
-            # 진단 결과 그레이스케일 마스크 시각화 생성 (노랑·주황은 153 중간 회색으로 표현)
+            # 진단 결과 그레이스케일 마스크 시각화 생성 (노랑·주황은 128 중간 회색으로 표현)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
             display_mask_gray[mask_boundary == 255]     = 50   # 경계 천이 영역 (20%)
-            display_mask_gray[mask_yellow_orange == 255] = 153  # 노랑·주황 부분 충진 (60%)
+            display_mask_gray[mask_yellow_orange == 255] = 128  # 노랑·주황 부분 충진 (50%)
             display_mask_gray[mask_green == 255]        = 255  # 초록색 완전 충진 (100%)
 
             # 픽셀 수 및 비율 계산
@@ -196,8 +196,8 @@ if uploaded_file is not None:
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
             boundary_pct = (boundary_pixels / total_pixels) * 100.0
 
-            # 최종 가중치 반영 충진율 산출 (노랑·주황 60%, 경계 20%)
-            final_ratio = min(green_pct + (yellow_orange_pct * 0.60) + (boundary_pct * 0.20), 100.0)
+            # 최종 가중치 반영 충진율 산출 (노랑·주황 50%, 경계 20%)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.50) + (boundary_pct * 0.20), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정 이미지")
