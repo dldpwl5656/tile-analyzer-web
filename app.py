@@ -149,17 +149,17 @@ if uploaded_file is not None:
             warped_img = cv2.warpPerspective(orig_img, matrix, (TARGET_W, TARGET_H))
             warped_rgb = cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB)
             
-            # HSV 색공간 변환을 통한 정밀 이진화 및 마스크 추출
+            # HSV 색공간 변환을 통한 정밀 이진화 및 마스크 추출 (편차 보정 범위 최적화)
             hsv = cv2.cvtColor(warped_img, cv2.COLOR_BGR2HSV)
             
-            # 1. 초록색 영역 (완전 충진 - 100%) - 범위 미세 확장으로 고충진 타일 손실 방지
-            mask_green = cv2.inRange(hsv, np.array([22, 12, 12]), np.array([98, 255, 255]))
+            # 1. 초록색 영역 (완전 충진 - 100%)
+            mask_green = cv2.inRange(hsv, np.array([21, 12, 12]), np.array([100, 255, 255]))
 
-            # 2. 노란색 + 주황색 영역 (부분 충진 - 가중치를 50%로 최적화 조정)
-            mask_yellow_orange = cv2.inRange(hsv, np.array([8, 15, 15]), np.array([25, 255, 255]))
+            # 2. 노란색 + 주황색 영역 (부분 충진 - 55% 가중치 및 유연한 범위 적용)
+            mask_yellow_orange = cv2.inRange(hsv, np.array([6, 12, 12]), np.array([27, 255, 255]))
 
             # 3. 빨강-주황 경계 천이 영역 (미세 가중치 - 20%)
-            mask_boundary = cv2.inRange(hsv, np.array([3, 15, 15]), np.array([7, 255, 255]))
+            mask_boundary = cv2.inRange(hsv, np.array([2, 12, 12]), np.array([5, 255, 255]))
 
             # 우선순위에 따른 마스크 중복 제거
             mask_yellow_orange = cv2.bitwise_and(mask_yellow_orange, cv2.bitwise_not(mask_green))
@@ -180,10 +180,10 @@ if uploaded_file is not None:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
-            # 진단 결과 그레이스케일 마스크 시각화 생성 (노랑·주황은 128 중간 회색으로 표현)
+            # 진단 결과 그레이스케일 마스크 시각화 생성 (노랑·주황은 140 회색으로 표현)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
             display_mask_gray[mask_boundary == 255]     = 50   # 경계 천이 영역 (20%)
-            display_mask_gray[mask_yellow_orange == 255] = 128  # 노랑·주황 부분 충진 (50%)
+            display_mask_gray[mask_yellow_orange == 255] = 140  # 노랑·주황 부분 충진 (55%)
             display_mask_gray[mask_green == 255]        = 255  # 초록색 완전 충진 (100%)
 
             # 픽셀 수 및 비율 계산
@@ -196,8 +196,8 @@ if uploaded_file is not None:
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
             boundary_pct = (boundary_pixels / total_pixels) * 100.0
 
-            # 최종 가중치 반영 충진율 산출 (노랑·주황 50%, 경계 20%)
-            final_ratio = min(green_pct + (yellow_orange_pct * 0.50) + (boundary_pct * 0.20), 100.0)
+            # 최종 가중치 반영 충진율 산출 (노랑·주황 55%, 경계 20%)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.55) + (boundary_pct * 0.20), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정 이미지")
@@ -229,55 +229,4 @@ if uploaded_file is not None:
                 "mask_img": display_mask_gray
             }
             
-            if not st.session_state.history or st.session_state.history[0].get("날짜시간") != new_record["날짜시간"]:
-                st.session_state.history.insert(0, new_record)
-
-        else:
-            with col2:
-                st.markdown("##### 2. 정면 보정 이미지")
-                st.info("좌측 이미지에서 4개의 모서리를 모두 터치해주세요.")
-            with col3:
-                st.markdown("##### 3. 진단 마스크 (Grayscale)")
-                st.info("분석 대기 중")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("📋 **분석 이력 기록 및 이미지 진화 과정 확인**", expanded=False):
-            if st.session_state.history:
-                df_display = pd.DataFrame([{k: v for k, v in item.items() if k not in ["warped_img", "mask_img"]} for item in st.session_state.history])
-                st.dataframe(df_display, use_container_width=True)
-                
-                st.markdown("🔍 **이력별 상세 보기 (보정 이미지 및 마스크 비교)**")
-                selected_idx = st.selectbox(
-                    "확인할 분석 이력 선택", 
-                    range(len(st.session_state.history)), 
-                    format_func=lambda i: f"[{st.session_state.history[i]['날짜시간']}]: {st.session_state.history[i]['사진 이름']} ({st.session_state.history[i]['최종 충진율']})"
-                )
-                
-                if selected_idx is not None:
-                    rec = st.session_state.history[selected_idx]
-                    h_col1, h_col2 = st.columns(2)
-                    with h_col1:
-                        st.text("당시 보정된 원본 이미지")
-                        st.image(rec["warped_img"], use_container_width=True)
-                    with h_col2:
-                        st.text("당시 생성된 진단 마스크")
-                        st.image(rec["mask_img"], use_container_width=True)
-                
-                col_exp1, col_exp2 = st.columns([1, 1])
-                with col_exp1:
-                    csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("💾 CSV 다운로드", data=csv_data, file_name="tile_history.csv", mime="text/csv", use_container_width=True)
-                with col_exp2:
-                    if st.button("🧹 이력 초기화", use_container_width=True):
-                        st.session_state.history = []
-                        st.session_state.pts = []
-                        st.session_state.last_coord = None
-                        st.session_state.coord_key += 1
-                        st.rerun()
-            else:
-                st.caption("저장된 이력이 없습니다.")
-
-else:
-    st.session_state.pts = []
-    st.session_state.last_coord = None
-    st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
+            if not st.session_state.history
