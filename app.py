@@ -62,6 +62,8 @@ if "pts" not in st.session_state:
     st.session_state.pts = []
 if "coord_key" not in st.session_state:
     st.session_state.coord_key = 0
+if "last_coord" not in st.session_state:
+    st.session_state.last_coord = None
 
 st.markdown("""
     <div class="title-card">
@@ -112,12 +114,12 @@ if uploaded_file is not None:
                 key=f"coord_input_{st.session_state.coord_key}"
             )
 
-            if coord_val is not None:
+            if coord_val is not None and coord_val != st.session_state.last_coord:
+                st.session_state.last_coord = coord_val
                 new_pt = [coord_val["x"], coord_val["y"]]
                 if len(st.session_state.pts) < 4:
-                    if not st.session_state.pts or st.session_state.pts[-1] != new_pt:
-                        st.session_state.pts.append(new_pt)
-                        st.rerun()
+                    st.session_state.pts.append(new_pt)
+                    st.rerun()
 
             st.write(f"📍 선택된 좌표: **{len(st.session_state.pts)} / 4** 개")
             
@@ -125,6 +127,7 @@ if uploaded_file is not None:
             with b_col1:
                 if st.button("🔄 리셋", use_container_width=True):
                     st.session_state.pts = []
+                    st.session_state.last_coord = None
                     st.session_state.coord_key += 1
                     st.rerun()
             with b_col2:
@@ -152,7 +155,7 @@ if uploaded_file is not None:
             # 1. 초록색 영역 (완전 충진 - 100%)
             mask_green = cv2.inRange(hsv, np.array([25, 15, 15]), np.array([95, 255, 255]))
 
-            # 2. 노란색 + 주황색 영역 (완전 통합 충진 - 100%)
+            # 2. 노란색 + 주황색 영역 (부분 충진 - 60% 가중치 부여로 수정)
             mask_yellow_orange = cv2.inRange(hsv, np.array([8, 15, 15]), np.array([26, 255, 255]))
 
             # 3. 빨강-주황 경계 천이 영역 (미세 가중치 - 20%)
@@ -177,11 +180,11 @@ if uploaded_file is not None:
                         filtered_m[labels == i] = 255
                 m[:] = filtered_m[:]
 
-            # 진단 결과 그레이스케일 마스크 시각화 생성
+            # 진단 결과 그레이스케일 마스크 시각화 생성 (노랑·주황은 153 중간 회색으로 표현)
             display_mask_gray = np.zeros((TARGET_H, TARGET_W), dtype=np.uint8)
             display_mask_gray[mask_boundary == 255]     = 50   # 경계 천이 영역 (20%)
-            display_mask_gray[mask_yellow_orange == 255] = 255  # 노랑·주황 통합 (100%)
-            display_mask_gray[mask_green == 255]        = 255  # 초록색 (100%)
+            display_mask_gray[mask_yellow_orange == 255] = 153  # 노랑·주황 부분 충진 (60%)
+            display_mask_gray[mask_green == 255]        = 255  # 초록색 완전 충진 (100%)
 
             # 픽셀 수 및 비율 계산
             green_pixels = np.sum(mask_green == 255)
@@ -193,8 +196,8 @@ if uploaded_file is not None:
             yellow_orange_pct = (yellow_orange_pixels / total_pixels) * 100.0
             boundary_pct = (boundary_pixels / total_pixels) * 100.0
 
-            # 최종 가중치 반영 충진율 산출
-            final_ratio = min(green_pct + yellow_orange_pct + (boundary_pct * 0.20), 100.0)
+            # 최종 가중치 반영 충진율 산출 (노랑·주황 60%, 경계 20%)
+            final_ratio = min(green_pct + (yellow_orange_pct * 0.60) + (boundary_pct * 0.20), 100.0)
 
             with col2:
                 st.markdown("##### 2. 정면 보정 이미지")
@@ -268,6 +271,7 @@ if uploaded_file is not None:
                     if st.button("🧹 이력 초기화", use_container_width=True):
                         st.session_state.history = []
                         st.session_state.pts = []
+                        st.session_state.last_coord = None
                         st.session_state.coord_key += 1
                         st.rerun()
             else:
@@ -275,4 +279,5 @@ if uploaded_file is not None:
 
 else:
     st.session_state.pts = []
+    st.session_state.last_coord = None
     st.info("👈 사이드바에서 열화상 사진을 업로드하세요.")
